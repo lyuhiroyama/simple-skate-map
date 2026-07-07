@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Skate Spots",
+    "slug": "skate-spots",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.skatespots.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Your location is used to show nearby skate spots and to pin new spots on the map.",
+        "NSPhotoLibraryUsageDescription": "Photo library access lets you attach photos and videos to skate spots.",
+        "NSCameraUsageDescription": "Camera access lets you snap photos of skate spots.",
+        "NSMicrophoneUsageDescription": "Microphone access is used when recording videos of skate spots."
+      }
+    },
+    "plugins": [
+      "expo-video",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Your location is used to show nearby skate spots and to pin new spots on the map."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Photo library access lets you attach photos and videos to skate spots.",
+          "cameraPermission": "Camera access lets you snap photos of skate spots."
+        }
+      ]
+    ]
+  }
+}
