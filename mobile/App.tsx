@@ -1,13 +1,29 @@
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { isDemo } from './src/config';
+import { initPreview } from './src/lib/preview';
 import { colors, spacing } from './src/theme';
 
 export default function App() {
+  const [ready, setReady] = useState(!isDemo);
+
+  useEffect(() => {
+    if (!isDemo) return;
+    initPreview().finally(() => setReady(true));
+  }, []);
+
+  if (!ready) {
+    return (
+      <View style={styles.boot}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <AuthProvider>
@@ -15,8 +31,7 @@ export default function App() {
         {isDemo ? (
           <View style={styles.demoBanner}>
             <Text style={styles.demoBannerText}>
-              Demo mode — sample spots, no live account. Add Supabase keys in mobile/.env to go
-              live.
+              Sample places to look at — no live account.
             </Text>
           </View>
         ) : null}
@@ -27,13 +42,19 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  boot: {
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    flex: 1,
+    justifyContent: 'center',
+  },
   demoBanner: {
     backgroundColor: colors.primaryDark,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
   demoBannerText: {
-    color: colors.text,
+    color: colors.onPrimary,
     fontSize: 12,
     textAlign: 'center',
   },

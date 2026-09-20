@@ -1,11 +1,13 @@
+import { Ionicons } from '@expo/vector-icons';
 import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { AddSpotScreen } from '../screens/AddSpotScreen';
 import { GroupDetailScreen } from '../screens/GroupDetailScreen';
+import { GroupMediaScreen } from '../screens/GroupMediaScreen';
 import { GroupsScreen } from '../screens/GroupsScreen';
 import { MapScreen } from '../screens/MapScreen';
 import { SignInScreen } from '../screens/SignInScreen';
@@ -44,23 +46,23 @@ function TabsNavigator() {
         component={MapScreen}
         options={{
           title: 'Spots',
-          tabBarIcon: ({ color }) => <TabIcon glyph="◎" color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="map-outline" size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="Groups"
         component={GroupsScreen}
         options={{
-          title: 'Crews',
-          tabBarIcon: ({ color }) => <TabIcon glyph="☰" color={color} />,
+          title: 'Groups',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubble-outline" size={size} color={color} />
+          ),
         }}
       />
     </Tabs.Navigator>
   );
-}
-
-function TabIcon({ glyph, color }: { glyph: string; color: string }) {
-  return <Text style={{ color, fontSize: 20 }}>{glyph}</Text>;
 }
 
 export function RootNavigator() {
@@ -93,12 +95,17 @@ export function RootNavigator() {
           <Stack.Screen
             name="AddSpot"
             component={AddSpotScreen}
-            options={{ title: 'New spot', presentation: 'modal' }}
+            options={{ title: 'Pin a place', presentation: 'modal' }}
           />
           <Stack.Screen
             name="GroupDetail"
             component={GroupDetailScreen}
             options={({ route }) => ({ title: route.params.groupName })}
+          />
+          <Stack.Screen
+            name="GroupMedia"
+            component={GroupMediaScreen}
+            options={{ title: 'Media' }}
           />
         </Stack.Navigator>
       ) : (

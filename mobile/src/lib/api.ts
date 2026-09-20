@@ -1,7 +1,7 @@
 import { config, isDemo } from '../config';
 import { previewApi } from './preview';
 import { supabase } from './supabase';
-import type { Group, GroupMember, PendingUpload, SpotDetail, SpotPin } from '../types';
+import type { ChatMessage, Group, GroupMember, PendingUpload, SpotDetail, SpotPin } from '../types';
 
 class ApiError extends Error {
   constructor(
@@ -65,6 +65,15 @@ const liveApi = {
 
   leaveGroup: (groupId: string) =>
     request<void>(`/groups/${groupId}/membership`, { method: 'DELETE' }),
+
+  getMessages: (groupId: string) =>
+    request<{ messages: ChatMessage[] }>(`/groups/${groupId}/messages`),
+
+  sendMessage: (groupId: string, input: { body?: string; imageUri?: string }) =>
+    request<{ message: ChatMessage }>(`/groups/${groupId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
 
   getSpots: (groupId?: string) =>
     request<{ spots: SpotPin[] }>(groupId ? `/spots?groupId=${groupId}` : '/spots'),

@@ -99,7 +99,7 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
 
       {spot.description ? (
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Details</Text>
+          <Text style={styles.sectionLabel}>Notes</Text>
           <Text style={styles.sectionText}>{spot.description}</Text>
         </View>
       ) : null}

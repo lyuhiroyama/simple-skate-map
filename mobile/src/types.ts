@@ -32,6 +32,16 @@ export interface SpotMedia {
   createdAt: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  groupId: string;
+  userId: string;
+  username: string;
+  body: string;
+  createdAt: string;
+  imageUrl?: string;
+}
+
 export interface SpotDetail extends SpotPin {
   description: string;
   createdBy: string;

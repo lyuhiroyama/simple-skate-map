@@ -1,21 +1,22 @@
-# Mr. Clipped Up
+# Simple Skate Map
 
-iOS app for sharing skate spots with your crew. Drop pins on a map, attach
-photos and videos, share privately with invite codes.
+iOS app for documenting street architecture and clips with your group. Pin
+places you admire, attach photos and videos, share privately with invite
+codes. For looking — not a guidebook.
 
 ## Run it (Mac + Simulator)
 
 Xcode must be installed and opened once.
 
 ```bash
-git clone https://github.com/lyuhiroyama/mr-clipped-up.git
-cd mr-clipped-up/mobile
+git clone https://github.com/lyuhiroyama/simple-skate-map.git
+cd simple-skate-map/mobile
 cp .env.example .env
 npm install
 npx expo start --ios
 ```
 
-No Supabase keys yet is fine. The app starts in **demo mode** (sample spots in
+No Supabase keys yet is fine. The app starts in **demo mode** (sample places in
 downtown LA, Apple/Google buttons skip a live account). You still get a real
 Apple Map in the Simulator.
 

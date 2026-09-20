@@ -165,7 +165,7 @@ export function AddSpotScreen({ route, navigation }: RootStackScreenProps<'AddSp
           <Text style={styles.mapHint}>Tap or drag the pin to fine-tune the location</Text>
         </View>
 
-        <Field label="Name" value={name} onChangeText={setName} placeholder="e.g. 12-stair rail" />
+        <Field label="Name" value={name} onChangeText={setName} placeholder="e.g. plaza ledges" />
         <Field
           label="Address"
           value={address}
@@ -173,10 +173,10 @@ export function AddSpotScreen({ route, navigation }: RootStackScreenProps<'AddSp
           placeholder="Auto-filled from the pin, edit if needed"
         />
         <Field
-          label="Details"
+          label="Notes"
           value={description}
           onChangeText={setDescription}
-          placeholder="Ground quality, security, best time to skate..."
+          placeholder="What you admire — materials, lines, clips you've seen..."
           multiline
           style={styles.multiline}
         />
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   groupChipTextActive: {
-    color: '#fff',
+    color: colors.onPrimary,
   },
   mediaRow: {
     flexDirection: 'row',

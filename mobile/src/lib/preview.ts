@@ -1,12 +1,15 @@
-import type { Group, GroupMember, PendingUpload, SpotDetail, SpotPin } from '../types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
+import type { ChatMessage, Group, GroupMember, PendingUpload, SpotDetail, SpotPin } from '../types';
 
 const USER_ID = 'preview-user';
+const STORE_KEY = 'mcu-demo-v2';
 
-const groups: Group[] = [
+const seedGroups: Group[] = [
   {
     id: 'crew-dtla',
-    name: 'Downtown Shredders',
-    inviteCode: 'SHRED1',
+    name: 'Tokyo Locals',
+    inviteCode: 'TOKYO1',
     createdBy: USER_ID,
     createdAt: '2026-06-01T00:00:00.000Z',
     memberCount: 3,
@@ -14,7 +17,7 @@ const groups: Group[] = [
   },
 ];
 
-const membersByGroup: Record<string, GroupMember[]> = {
+const seedMembers: Record<string, GroupMember[]> = {
   'crew-dtla': [
     {
       userId: USER_ID,
@@ -37,7 +40,7 @@ const membersByGroup: Record<string, GroupMember[]> = {
   ],
 };
 
-const spots: SpotDetail[] = [
+const seedSpots: SpotDetail[] = [
   {
     id: 'spot-pershing',
     groupId: 'crew-dtla',
@@ -46,7 +49,8 @@ const spots: SpotDetail[] = [
     latitude: 34.0483,
     longitude: -118.2513,
     createdAt: '2026-06-10T18:00:00.000Z',
-    description: 'Marble ledges and a bump to bar. Security cycles through after 8. Best weekday mornings.',
+    description:
+      'Marble lines in a downtown plaza that show up in old clips. Saved to look at, not as a session guide.',
     createdBy: 'user-nina',
     createdByUsername: 'nina',
     media: [
@@ -61,12 +65,12 @@ const spots: SpotDetail[] = [
   {
     id: 'spot-spring',
     groupId: 'crew-dtla',
-    name: 'Spring Street 8-stair',
+    name: 'Spring Street stair',
     address: '3rd & Spring, Los Angeles',
     latitude: 34.0425,
     longitude: -118.2535,
     createdAt: '2026-06-14T21:00:00.000Z',
-    description: 'Clean 8-stair with a long run-up. Watch for lunch-hour foot traffic.',
+    description: 'A long public stair on Spring Street, often photographed. For looking.',
     createdBy: USER_ID,
     createdByUsername: 'you',
     media: [],
@@ -74,17 +78,22 @@ const spots: SpotDetail[] = [
   {
     id: 'spot-schoolyard',
     groupId: 'crew-dtla',
-    name: '3rd Street schoolyard',
+    name: '3rd & Hill plaza',
     address: 'Near 3rd & Hill, Los Angeles',
     latitude: 34.0405,
     longitude: -118.247,
     createdAt: '2026-06-18T16:30:00.000Z',
-    description: 'Banks and a manny pad after school lets out. Smooth ground, lights until 10.',
+    description: 'Open ground and banks near 3rd & Hill. Documented for the shapes.',
     createdBy: 'user-jules',
     createdByUsername: 'jules',
     media: [],
   },
 ];
+
+let groups: Group[] = seedGroups.map((g) => ({ ...g }));
+let membersByGroup: Record<string, GroupMember[]> = JSON.parse(JSON.stringify(seedMembers));
+let spots: SpotDetail[] = seedSpots.map((s) => ({ ...s, media: [...s.media] }));
+let messagesByGroup: Record<string, ChatMessage[]> = {};
 
 function pin(spot: SpotDetail): SpotPin {
   return {
@@ -98,6 +107,32 @@ function pin(spot: SpotDetail): SpotPin {
   };
 }
 
+async function persist() {
+  await AsyncStorage.setItem(
+    STORE_KEY,
+    JSON.stringify({ groups, membersByGroup, spots, messagesByGroup }),
+  );
+}
+
+export async function initPreview() {
+  const raw = await AsyncStorage.getItem(STORE_KEY);
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw) as {
+      groups?: Group[];
+      membersByGroup?: Record<string, GroupMember[]>;
+      spots?: SpotDetail[];
+      messagesByGroup?: Record<string, ChatMessage[]>;
+    };
+    if (parsed.groups) groups = parsed.groups;
+    if (parsed.membersByGroup) membersByGroup = parsed.membersByGroup;
+    if (parsed.spots) spots = parsed.spots;
+    if (parsed.messagesByGroup) messagesByGroup = parsed.messagesByGroup;
+  } catch {
+    // keep seed data if storage is corrupt
+  }
+}
+
 export const previewUserId = USER_ID;
 
 export const previewApi = {
@@ -105,7 +140,7 @@ export const previewApi = {
 
   createGroup: async (name: string) => {
     const group: Group = {
-      id: `crew-${Date.now()}`,
+      id: `group-${Date.now()}`,
       name,
       inviteCode: Math.random().toString(36).slice(2, 10).toUpperCase(),
       createdBy: USER_ID,
@@ -122,13 +157,14 @@ export const previewApi = {
         joinedAt: group.createdAt,
       },
     ];
+    await persist();
     return { group };
   },
 
   joinGroup: async (inviteCode: string) => {
     const group = groups.find((g) => g.inviteCode.toLowerCase() === inviteCode.toLowerCase());
     if (!group) {
-      throw new Error('No crew with that invite code');
+      throw new Error('No group with that invite code');
     }
     return { group: { id: group.id, name: group.name, inviteCode: group.inviteCode } };
   },
@@ -140,6 +176,45 @@ export const previewApi = {
   leaveGroup: async (groupId: string) => {
     const index = groups.findIndex((g) => g.id === groupId);
     if (index >= 0) groups.splice(index, 1);
+    delete membersByGroup[groupId];
+    delete messagesByGroup[groupId];
+    await persist();
+  },
+
+  getMessages: async (groupId: string) => ({
+    messages: [...(messagesByGroup[groupId] ?? [])],
+  }),
+
+  sendMessage: async (groupId: string, input: { body?: string; imageUri?: string }) => {
+    const text = input.body?.trim() ?? '';
+    let imageUrl: string | undefined;
+    if (input.imageUri) {
+      const dirRoot = FileSystem.documentDirectory;
+      if (dirRoot) {
+        const id = `chatimg-${Date.now()}`;
+        const ext = input.imageUri.split('.').pop()?.toLowerCase();
+        const safeExt = ext && /^[a-z0-9]{1,8}$/.test(ext) ? ext : 'jpg';
+        const dir = `${dirRoot}chat-media/${groupId}/`;
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+        imageUrl = `${dir}${id}.${safeExt}`;
+        await FileSystem.copyAsync({ from: input.imageUri, to: imageUrl });
+      } else {
+        imageUrl = input.imageUri;
+      }
+    }
+    if (!text && !imageUrl) throw new Error('Message is empty');
+    const message: ChatMessage = {
+      id: `msg-${Date.now()}`,
+      groupId,
+      userId: USER_ID,
+      username: 'you',
+      body: text,
+      createdAt: new Date().toISOString(),
+      imageUrl,
+    };
+    messagesByGroup[groupId] = [...(messagesByGroup[groupId] ?? []), message];
+    await persist();
+    return { message };
   },
 
   getSpots: async (groupId?: string) => ({
@@ -174,6 +249,7 @@ export const previewApi = {
       media: [],
     };
     spots.unshift(spot);
+    await persist();
     return { spot: { id: spot.id } };
   },
 
@@ -181,8 +257,43 @@ export const previewApi = {
     throw new Error('Media uploads are disabled in this web preview');
   },
 
+  attachLocalMedia: async (
+    spotId: string,
+    asset: { uri: string; type?: string | null; fileName?: string | null },
+  ) => {
+    const spot = spots.find((s) => s.id === spotId);
+    if (!spot) throw new Error('Spot not found');
+
+    const mediaType = asset.type === 'video' ? 'video' : 'photo';
+    const fromName = asset.fileName?.split('.').pop();
+    const fromUri = asset.uri.split('.').pop();
+    const ext =
+      fromName && /^[a-zA-Z0-9]{1,8}$/.test(fromName)
+        ? fromName.toLowerCase()
+        : fromUri && /^[a-zA-Z0-9]{1,8}$/.test(fromUri)
+          ? fromUri.toLowerCase()
+          : mediaType === 'video'
+            ? 'mp4'
+            : 'jpg';
+
+    const id = `media-${Date.now()}`;
+    const dir = `${FileSystem.documentDirectory}spot-media/${spotId}/`;
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    const dest = `${dir}${id}.${ext}`;
+    await FileSystem.copyAsync({ from: asset.uri, to: dest });
+
+    spot.media.push({
+      id,
+      mediaType,
+      url: dest,
+      createdAt: new Date().toISOString(),
+    });
+    await persist();
+  },
+
   deleteSpot: async (spotId: string) => {
     const index = spots.findIndex((s) => s.id === spotId);
     if (index >= 0) spots.splice(index, 1);
+    await persist();
   },
 };

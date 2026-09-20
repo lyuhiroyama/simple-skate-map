@@ -5,6 +5,7 @@ export type RootStackParamList = {
   SpotDetail: { spotId: string; spotName: string };
   AddSpot: { latitude: number; longitude: number };
   GroupDetail: { groupId: string; groupName: string };
+  GroupMedia: { groupId: string; groupName: string };
 };
 
 export type RootStackScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<

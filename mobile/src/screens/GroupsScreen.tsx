@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
@@ -89,40 +90,31 @@ export function GroupsScreen() {
       }
       ListHeaderComponent={
         <View style={styles.header}>
-          <View style={styles.formRow}>
-            <View style={styles.formField}>
-              <Field
-                label="New crew"
-                value={newGroupName}
-                onChangeText={setNewGroupName}
-                placeholder="e.g. Downtown Shredders"
-              />
-            </View>
-            <View style={styles.formButton}>
-              <Button title="Create" onPress={createGroup} loading={busy} />
-            </View>
+          <Field
+            label="Group name"
+            value={newGroupName}
+            onChangeText={setNewGroupName}
+            placeholder="e.g. Tokyo Locals"
+          />
+          <Button title="Create group" onPress={createGroup} loading={busy} />
+          <Field
+            label="Invite code"
+            value={inviteCode}
+            onChangeText={setInviteCode}
+            autoCapitalize="none"
+            placeholder="e.g. TOKYO1"
+          />
+          <Button title="Join group" variant="secondary" onPress={joinGroup} loading={busy} />
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="chatbubble-outline" size={20} color={colors.text} />
+            <Text style={styles.sectionTitle}>Groups</Text>
           </View>
-          <View style={styles.formRow}>
-            <View style={styles.formField}>
-              <Field
-                label="Join with invite code"
-                value={inviteCode}
-                onChangeText={setInviteCode}
-                autoCapitalize="none"
-                placeholder="e.g. a1b2c3d4"
-              />
-            </View>
-            <View style={styles.formButton}>
-              <Button title="Join" variant="secondary" onPress={joinGroup} loading={busy} />
-            </View>
-          </View>
-          <Text style={styles.sectionTitle}>Your crews</Text>
         </View>
       }
       ListEmptyComponent={
         <EmptyState
-          title="No crews yet"
-          subtitle="Create one above, or join with a friend's invite code."
+          title="No groups yet"
+          subtitle="Create one above, or join with an invite code."
         />
       }
       renderItem={({ item }) => (
@@ -136,10 +128,9 @@ export function GroupsScreen() {
             <Text style={styles.cardTitle}>{item.name}</Text>
             <Text style={styles.cardMeta}>
               {item.memberCount} member{item.memberCount === 1 ? '' : 's'} ·{' '}
-              {item.myRole === 'owner' ? 'you own this crew' : 'member'}
+              {item.myRole === 'owner' ? 'you own this group' : 'member'}
             </Text>
           </View>
-          <Text style={styles.cardChevron}>›</Text>
         </Pressable>
       )}
       ListFooterComponent={
@@ -165,22 +156,16 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginBottom: spacing.sm,
   },
-  formRow: {
-    alignItems: 'flex-end',
+  sectionTitleRow: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
-  },
-  formField: {
-    flex: 1,
-  },
-  formButton: {
-    width: 96,
+    marginTop: spacing.sm,
   },
   sectionTitle: {
     color: colors.text,
     fontSize: 20,
     fontWeight: '800',
-    marginTop: spacing.sm,
   },
   card: {
     alignItems: 'center',
@@ -203,10 +188,6 @@ const styles = StyleSheet.create({
   cardMeta: {
     color: colors.textMuted,
     fontSize: 13,
-  },
-  cardChevron: {
-    color: colors.textMuted,
-    fontSize: 24,
   },
   footer: {
     marginTop: spacing.lg,

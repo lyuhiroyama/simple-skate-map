@@ -30,6 +30,8 @@ export function Button({
         ? colors.danger
         : colors.surfaceLight;
 
+  const onButton = variant === 'primary' ? colors.onPrimary : colors.text;
+
   return (
     <Pressable
       onPress={onPress}
@@ -40,9 +42,11 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={colors.text} />
+        <ActivityIndicator color={onButton} />
       ) : (
-        <Text style={styles.buttonText}>{title}</Text>
+        <Text style={[styles.buttonText, { color: onButton }]} numberOfLines={1}>
+          {title}
+        </Text>
       )}
     </Pressable>
   );
@@ -81,7 +85,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   buttonText: {
-    color: colors.text,
+    flexShrink: 0,
     fontSize: 16,
     fontWeight: '700',
   },

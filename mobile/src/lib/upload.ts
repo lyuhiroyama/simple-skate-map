@@ -1,6 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import type { ImagePickerAsset } from 'expo-image-picker';
+import { isDemo } from '../config';
 import { api } from './api';
+import { previewApi } from './preview';
 
 function extensionFor(asset: ImagePickerAsset): string {
   const fromName = asset.fileName?.split('.').pop();
@@ -15,6 +17,11 @@ function extensionFor(asset: ImagePickerAsset): string {
  * to Supabase Storage using the signed upload URL.
  */
 export async function uploadSpotAsset(spotId: string, asset: ImagePickerAsset): Promise<void> {
+  if (isDemo) {
+    await previewApi.attachLocalMedia(spotId, asset);
+    return;
+  }
+
   const mediaType = asset.type === 'video' ? 'video' : 'photo';
   const ext = extensionFor(asset);
 

@@ -1,17 +1,17 @@
-import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, type LongPressEvent } from 'react-native-maps';
-import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
 import type { Group, SpotPin } from '../types';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, radius, spacing } from '../theme';
 
 const DEFAULT_REGION = {
-  // Downtown LA as a skate-friendly fallback until we get a GPS fix.
+  // Downtown LA fallback until we get a GPS fix.
   latitude: 34.0407,
   longitude: -118.2468,
   latitudeDelta: 0.08,
@@ -20,13 +20,61 @@ const DEFAULT_REGION = {
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
+async function getUserPosition() {
+  const { status } = await Location.requestForegroundPermissionsAsync();
+  if (status !== 'granted') return { status } as const;
+  try {
+    const position = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+    return { status, position } as const;
+  } catch {
+    const position = await Location.getLastKnownPositionAsync();
+    return { status, position } as const;
+  }
+}
+
 export function MapScreen() {
   const navigation = useNavigation<Nav>();
   const mapRef = useRef<MapView>(null);
   const [spots, setSpots] = useState<SpotPin[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
   const centeredOnUser = useRef(false);
+
+  const animateToUser = (position: Location.LocationObject) => {
+    mapRef.current?.animateToRegion(
+      {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      },
+      600,
+    );
+  };
+
+  const focusOnUser = async () => {
+    if (locating) return;
+    setLocating(true);
+    try {
+      const result = await getUserPosition();
+      if (result.status !== 'granted') {
+        Alert.alert('Location needed', 'Allow location so the map can jump to where you are.');
+        return;
+      }
+      if (!result.position) {
+        Alert.alert('No GPS yet', 'Could not find your position. Try again in a moment.');
+        return;
+      }
+      animateToUser(result.position);
+    } catch {
+      Alert.alert('No GPS yet', 'Could not find your position. Try again in a moment.');
+    } finally {
+      setLocating(false);
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -45,21 +93,23 @@ export function MapScreen() {
   );
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted' || centeredOnUser.current) return;
-      const position = await Location.getCurrentPositionAsync({});
-      centeredOnUser.current = true;
-      mapRef.current?.animateToRegion(
-        {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        },
-        600,
-      );
+      try {
+        if (centeredOnUser.current) return;
+        const result = await getUserPosition();
+        if (result.status !== 'granted' || !result.position || cancelled || centeredOnUser.current) {
+          return;
+        }
+        centeredOnUser.current = true;
+        animateToUser(result.position);
+      } catch {
+        // Simulator often has no GPS fix (kCLErrorDomain 0). Stay on the default region.
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const visibleSpots = activeGroupId
@@ -75,7 +125,7 @@ export function MapScreen() {
     if (groups.length === 0) {
       Alert.alert(
         'No group yet',
-        'Create or join a group first (Groups tab) so your spots have somewhere to live.',
+        'Create or join a group first (Groups tab) so your pins have somewhere to live.',
       );
       return;
     }
@@ -120,7 +170,7 @@ export function MapScreen() {
           contentContainerStyle={styles.chipsContent}
         >
           <Chip
-            label="All crews"
+            label="All groups"
             active={activeGroupId === null}
             onPress={() => setActiveGroupId(null)}
           />
@@ -135,15 +185,24 @@ export function MapScreen() {
         </ScrollView>
       ) : null}
 
-      <Pressable style={styles.fab} onPress={addAtMapCenter}>
-        <Text style={styles.fabText}>+</Text>
-      </Pressable>
+      <View style={styles.fabStack}>
+        <Pressable
+          style={[styles.locate, locating ? styles.locateBusy : null]}
+          onPress={focusOnUser}
+          accessibilityLabel="My location"
+        >
+          <Ionicons name="navigate" size={22} color={colors.primary} />
+        </Pressable>
+        <Pressable style={styles.fab} onPress={addAtMapCenter}>
+          <Text style={styles.fabText}>+</Text>
+        </Pressable>
+      </View>
 
       <View style={styles.hint} pointerEvents="none">
         <Text style={styles.hintText}>
           {Platform.OS === 'web'
-            ? 'Right-click the map (or tap +) to drop a spot'
-            : 'Long-press the map to drop a spot'}
+            ? 'Right-click the map (or tap +) to pin a place you admire'
+            : 'Long-press the map to pin a place you admire'}
         </Text>
       </View>
     </View>
@@ -201,17 +260,38 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   chipTextActive: {
-    color: '#fff',
+    color: colors.onPrimary,
+  },
+  fabStack: {
+    alignItems: 'center',
+    bottom: spacing.xl,
+    gap: spacing.sm,
+    position: 'absolute',
+    right: spacing.lg,
+  },
+  locate: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    height: 48,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    width: 48,
+  },
+  locateBusy: {
+    opacity: 0.55,
   },
   fab: {
     alignItems: 'center',
     backgroundColor: colors.primary,
     borderRadius: radius.full,
-    bottom: spacing.xl,
     height: 60,
     justifyContent: 'center',
-    position: 'absolute',
-    right: spacing.lg,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
@@ -219,7 +299,7 @@ const styles = StyleSheet.create({
     width: 60,
   },
   fabText: {
-    color: '#fff',
+    color: colors.onPrimary,
     fontSize: 32,
     fontWeight: '600',
     lineHeight: 36,
