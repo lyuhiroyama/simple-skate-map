@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { supabaseAdmin } from '../supabase.js';
-import { memberGroupIds } from '../lib/membership.js';
+import { CHAT_MEDIA_BUCKET, supabaseAdmin } from '../supabase.js';
+import { isGroupMember, memberGroupIds } from '../lib/membership.js';
 
 export const groupsRouter = Router();
 
@@ -135,6 +136,135 @@ groupsRouter.get('/:groupId/members', async (req, res) => {
   }));
 
   res.json({ members });
+});
+
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+function mapMessage(
+  row: {
+    id: string;
+    group_id: string;
+    user_id: string;
+    body: string;
+    created_at: string;
+  },
+  username: string,
+  imageUrl?: string,
+) {
+  return {
+    id: row.id,
+    groupId: row.group_id,
+    userId: row.user_id,
+    username,
+    body: row.body,
+    createdAt: row.created_at,
+    imageUrl,
+  };
+}
+
+/** List chat messages in one of my groups. */
+groupsRouter.get('/:groupId/messages', async (req, res) => {
+  if (!(await isGroupMember(req.userId, req.params.groupId))) {
+    res.status(403).json({ error: 'You are not a member of this group' });
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('messages')
+    .select('id, group_id, user_id, body, storage_path, created_at, profiles(username)')
+    .eq('group_id', req.params.groupId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+
+  const messages = await Promise.all(
+    (data ?? []).map(async (row) => {
+      let imageUrl: string | undefined;
+      if (row.storage_path) {
+        const { data: signed, error: signError } = await supabaseAdmin.storage
+          .from(CHAT_MEDIA_BUCKET)
+          .createSignedUrl(row.storage_path, SIGNED_URL_TTL_SECONDS);
+        if (signError) throw signError;
+        imageUrl = signed.signedUrl;
+      }
+      return mapMessage(
+        row,
+        (row.profiles as unknown as { username: string } | null)?.username ?? 'unknown',
+        imageUrl,
+      );
+    }),
+  );
+
+  res.json({ messages });
+});
+
+const sendMessageSchema = z.object({
+  body: z.string().trim().max(2000).optional(),
+  fileExtension: z
+    .string()
+    .trim()
+    .regex(/^[a-zA-Z0-9]{1,8}$/)
+    .optional(),
+});
+
+/** Send a text and/or photo message. Photos return a signed upload URL. */
+groupsRouter.post('/:groupId/messages', async (req, res) => {
+  const parsed = sendMessageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Message is empty' });
+    return;
+  }
+
+  const body = parsed.data.body ?? '';
+  if (!body && !parsed.data.fileExtension) {
+    res.status(400).json({ error: 'Message is empty' });
+    return;
+  }
+
+  if (!(await isGroupMember(req.userId, req.params.groupId))) {
+    res.status(403).json({ error: 'You are not a member of this group' });
+    return;
+  }
+
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('username')
+    .eq('id', req.userId)
+    .single();
+  if (profileError) throw profileError;
+
+  let storagePath: string | undefined;
+  let uploadUrl: string | undefined;
+  let uploadToken: string | undefined;
+
+  if (parsed.data.fileExtension) {
+    const mediaId = randomUUID();
+    storagePath = `${req.params.groupId}/${mediaId}.${parsed.data.fileExtension.toLowerCase()}`;
+    const { data: upload, error: uploadError } = await supabaseAdmin.storage
+      .from(CHAT_MEDIA_BUCKET)
+      .createSignedUploadUrl(storagePath);
+    if (uploadError) throw uploadError;
+    uploadUrl = upload.signedUrl;
+    uploadToken = upload.token;
+  }
+
+  const { data: message, error } = await supabaseAdmin
+    .from('messages')
+    .insert({
+      group_id: req.params.groupId,
+      user_id: req.userId,
+      body,
+      storage_path: storagePath ?? null,
+    })
+    .select('id, group_id, user_id, body, created_at')
+    .single();
+  if (error) throw error;
+
+  res.status(201).json({
+    message: mapMessage(message, profile.username, undefined),
+    upload: uploadUrl
+      ? { uploadUrl, uploadToken, storagePath }
+      : undefined,
+  });
 });
 
 /** Leave a group. */

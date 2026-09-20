@@ -10,3 +10,4 @@ export const supabaseAdmin = createClient(env.supabaseUrl, env.supabaseServiceRo
 });
 
 export const MEDIA_BUCKET = 'spot-media';
+export const CHAT_MEDIA_BUCKET = 'chat-media';

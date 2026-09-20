@@ -1,6 +1,7 @@
 import { config, isDemo } from '../config';
 import { previewApi } from './preview';
 import { supabase } from './supabase';
+import * as FileSystem from 'expo-file-system/legacy';
 import type { ChatMessage, Group, GroupMember, PendingUpload, SpotDetail, SpotPin } from '../types';
 
 class ApiError extends Error {
@@ -69,11 +70,32 @@ const liveApi = {
   getMessages: (groupId: string) =>
     request<{ messages: ChatMessage[] }>(`/groups/${groupId}/messages`),
 
-  sendMessage: (groupId: string, input: { body?: string; imageUri?: string }) =>
-    request<{ message: ChatMessage }>(`/groups/${groupId}/messages`, {
+  sendMessage: async (groupId: string, input: { body?: string; imageUri?: string }) => {
+    const fromUri = input.imageUri?.split('.').pop();
+    const fileExtension =
+      fromUri && /^[a-z0-9]{1,8}$/i.test(fromUri) ? fromUri.toLowerCase() : input.imageUri ? 'jpg' : undefined;
+    const result = await request<{
+      message: ChatMessage;
+      upload?: { uploadUrl: string; uploadToken: string; storagePath: string };
+    }>(`/groups/${groupId}/messages`, {
       method: 'POST',
-      body: JSON.stringify(input),
-    }),
+      body: JSON.stringify({
+        body: input.body,
+        fileExtension: input.imageUri ? fileExtension : undefined,
+      }),
+    });
+    if (result.upload && input.imageUri) {
+      const uploaded = await FileSystem.uploadAsync(result.upload.uploadUrl, input.imageUri, {
+        httpMethod: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg' },
+      });
+      if (uploaded.status < 200 || uploaded.status >= 300) {
+        throw new ApiError(`Upload failed with status ${uploaded.status}`, uploaded.status);
+      }
+      result.message.imageUrl = input.imageUri;
+    }
+    return { message: result.message };
+  },
 
   getSpots: (groupId?: string) =>
     request<{ spots: SpotPin[] }>(groupId ? `/spots?groupId=${groupId}` : '/spots'),
