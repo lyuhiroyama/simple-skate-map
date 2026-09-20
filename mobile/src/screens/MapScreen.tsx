@@ -3,20 +3,34 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, type LongPressEvent } from 'react-native-maps';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import MapView, { Marker, type LongPressEvent, type Region } from 'react-native-maps';
 import { api } from '../lib/api';
 import type { Group, SpotPin } from '../types';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, radius, spacing } from '../theme';
 
-const DEFAULT_REGION = {
-  // Downtown LA fallback until we get a GPS fix.
-  latitude: 34.0407,
-  longitude: -118.2468,
-  latitudeDelta: 0.08,
-  longitudeDelta: 0.08,
+const USER_ZOOM = {
+  latitudeDelta: 0.05,
+  longitudeDelta: 0.05,
 };
+
+function regionFrom(position: Location.LocationObject): Region {
+  return {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    ...USER_ZOOM,
+  };
+}
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -41,35 +55,38 @@ export function MapScreen() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+  const [initialRegion, setInitialRegion] = useState<Region | null>(null);
+  const [locationBlocked, setLocationBlocked] = useState(false);
   const centeredOnUser = useRef(false);
 
-  const animateToUser = (position: Location.LocationObject) => {
-    mapRef.current?.animateToRegion(
-      {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      },
-      600,
-    );
+  const applyUserPosition = (position: Location.LocationObject) => {
+    if (!centeredOnUser.current) {
+      centeredOnUser.current = true;
+      setInitialRegion(regionFrom(position));
+      return;
+    }
+    animateToUser(position);
   };
 
   const focusOnUser = async () => {
     if (locating) return;
     setLocating(true);
+    setLocationBlocked(false);
     try {
       const result = await getUserPosition();
       if (result.status !== 'granted') {
-        Alert.alert('Location needed', 'Allow location so the map can jump to where you are.');
+        setLocationBlocked(true);
+        Alert.alert('Location needed', 'Allow location so the map can open where you are.');
         return;
       }
       if (!result.position) {
+        setLocationBlocked(true);
         Alert.alert('No GPS yet', 'Could not find your position. Try again in a moment.');
         return;
       }
-      animateToUser(result.position);
+      applyUserPosition(result.position);
     } catch {
+      setLocationBlocked(true);
       Alert.alert('No GPS yet', 'Could not find your position. Try again in a moment.');
     } finally {
       setLocating(false);
@@ -95,16 +112,33 @@ export function MapScreen() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        if (centeredOnUser.current) return;
-        const result = await getUserPosition();
-        if (result.status !== 'granted' || !result.position || cancelled || centeredOnUser.current) {
-          return;
-        }
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (cancelled) return;
+      if (status !== 'granted') {
+        setLocationBlocked(true);
+        return;
+      }
+
+      const lastKnown = await Location.getLastKnownPositionAsync();
+      if (cancelled) return;
+      if (lastKnown && !centeredOnUser.current) {
         centeredOnUser.current = true;
-        animateToUser(result.position);
+        setInitialRegion(regionFrom(lastKnown));
+      }
+
+      try {
+        const position = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (cancelled || !position) return;
+        if (!centeredOnUser.current) {
+          centeredOnUser.current = true;
+          setInitialRegion(regionFrom(position));
+        } else {
+          animateToUser(position);
+        }
       } catch {
-        // Simulator often has no GPS fix (kCLErrorDomain 0). Stay on the default region.
+        if (!centeredOnUser.current) setLocationBlocked(true);
       }
     })();
     return () => {
@@ -132,12 +166,36 @@ export function MapScreen() {
     }
   };
 
+  if (!initialRegion) {
+    return (
+      <View style={styles.center}>
+        {locationBlocked ? (
+          <>
+            <Text style={styles.blockedTitle}>Location needed</Text>
+            <Text style={styles.blockedBody}>The map opens on where you are. Allow location, then try again.</Text>
+            <Pressable
+              style={styles.retry}
+              onPress={() => {
+                centeredOnUser.current = false;
+                void focusOnUser();
+              }}
+            >
+              <Text style={styles.retryText}>Use my location</Text>
+            </Pressable>
+          </>
+        ) : (
+          <ActivityIndicator color={colors.primary} size="large" />
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
-        initialRegion={DEFAULT_REGION}
+        initialRegion={initialRegion}
         onLongPress={onLongPress}
         showsUserLocation
       >
@@ -224,6 +282,38 @@ function Chip({
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  center: {
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    flex: 1,
+    gap: spacing.md,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  blockedTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  blockedBody: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  retry: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.full,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  retryText: {
+    color: colors.onPrimary,
+    fontSize: 15,
+    fontWeight: '700',
   },
   chips: {
     left: 0,

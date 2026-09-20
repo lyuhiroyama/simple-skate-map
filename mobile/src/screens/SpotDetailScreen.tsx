@@ -4,6 +4,9 @@ import {
   Alert,
   Dimensions,
   Image,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,13 +16,14 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { Button, EmptyState } from '../components/ui';
+import { EmptyState } from '../components/ui';
 import type { SpotDetail, SpotMedia } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, radius, spacing } from '../theme';
 
 const MEDIA_WIDTH = Dimensions.get('window').width - spacing.lg * 2;
 const MEDIA_HEIGHT = Math.round(MEDIA_WIDTH * 0.75);
+const MEDIA_PAGE = MEDIA_WIDTH + spacing.sm;
 
 export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'SpotDetail'>) {
   const { spotId } = route.params;
@@ -27,6 +31,7 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
   const [spot, setSpot] = useState<SpotDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [mediaIndex, setMediaIndex] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -34,7 +39,10 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
       api
         .getSpot(spotId)
         .then(({ spot: s }) => {
-          if (!cancelled) setSpot(s);
+          if (!cancelled) {
+            setSpot(s);
+            setMediaIndex(0);
+          }
         })
         .catch((e: unknown) => {
           if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load spot');
@@ -105,27 +113,54 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
       ) : null}
 
       <View style={styles.section}>
-        <Text style={styles.sectionLabel}>
-          Photos & videos {spot.media.length > 0 ? `(${spot.media.length})` : ''}
-        </Text>
+        <Text style={styles.sectionLabel}>Photos & videos</Text>
         {spot.media.length === 0 ? (
           <Text style={styles.sectionText}>No media yet.</Text>
         ) : (
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            style={styles.mediaStrip}
-          >
-            {spot.media.map((item) => (
-              <MediaItem key={item.id} item={item} />
-            ))}
-          </ScrollView>
+          <>
+            {spot.media.length > 1 ? (
+              <Text style={styles.mediaCount}>
+                {spot.media[mediaIndex]?.mediaType === 'video' ? 'Video' : 'Photo'} {mediaIndex + 1} of{' '}
+                {spot.media.length}
+              </Text>
+            ) : null}
+            <ScrollView
+              horizontal
+              pagingEnabled
+              decelerationRate="fast"
+              snapToInterval={MEDIA_PAGE}
+              snapToAlignment="start"
+              disableIntervalMomentum
+              showsHorizontalScrollIndicator={false}
+              style={styles.mediaStrip}
+              onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+                const next = Math.round(e.nativeEvent.contentOffset.x / MEDIA_PAGE);
+                setMediaIndex(Math.max(0, Math.min(next, spot.media.length - 1)));
+              }}
+            >
+              {spot.media.map((item) => (
+                <MediaItem key={item.id} item={item} />
+              ))}
+            </ScrollView>
+          </>
         )}
       </View>
 
       {isMine ? (
-        <Button title="Delete spot" variant="danger" onPress={confirmDelete} loading={deleting} />
+        <Pressable
+          onPress={confirmDelete}
+          disabled={deleting}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Delete spot"
+          style={styles.deleteWrap}
+        >
+          {deleting ? (
+            <ActivityIndicator color={colors.textMuted} size="small" />
+          ) : (
+            <Text style={styles.deleteText}>Delete spot</Text>
+          )}
+        </Pressable>
       ) : null}
     </ScrollView>
   );
@@ -194,11 +229,26 @@ const styles = StyleSheet.create({
   mediaStrip: {
     marginTop: spacing.xs,
   },
+  mediaCount: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   media: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     height: MEDIA_HEIGHT,
     marginRight: spacing.sm,
     width: MEDIA_WIDTH,
+  },
+  deleteWrap: {
+    alignSelf: 'center',
+    marginTop: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  deleteText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '500',
   },
 });

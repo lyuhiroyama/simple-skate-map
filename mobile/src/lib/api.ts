@@ -2,7 +2,7 @@ import { config, isDemo } from '../config';
 import { previewApi } from './preview';
 import { supabase } from './supabase';
 import * as FileSystem from 'expo-file-system/legacy';
-import type { ChatMessage, Group, GroupMember, PendingUpload, SpotDetail, SpotPin } from '../types';
+import type { ChatMessage, Group, GroupMember, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
 
 class ApiError extends Error {
   constructor(
@@ -122,6 +122,14 @@ const liveApi = {
     }),
 
   deleteSpot: (spotId: string) => request<void>(`/spots/${spotId}`, { method: 'DELETE' }),
+
+  getMe: () => request<{ profile: Profile }>('/me'),
+
+  updateUsername: (username: string) =>
+    request<{ profile: Profile }>('/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ username }),
+    }),
 };
 
 export const api = isDemo ? previewApi : liveApi;

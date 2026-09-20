@@ -40,6 +40,7 @@ export interface ChatMessage {
   body: string;
   createdAt: string;
   imageUrl?: string;
+  status?: 'sending' | 'sent' | 'failed';
 }
 
 export interface SpotDetail extends SpotPin {
@@ -47,6 +48,12 @@ export interface SpotDetail extends SpotPin {
   createdBy: string;
   createdByUsername: string;
   media: SpotMedia[];
+}
+
+export interface Profile {
+  id: string;
+  username: string;
+  createdAt: string;
 }
 
 export interface PendingUpload {

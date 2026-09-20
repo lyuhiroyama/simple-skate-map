@@ -94,8 +94,8 @@ export const MapView = forwardRef(function MapView(
       const center = mapRef.current?.getCenter();
       return {
         center: {
-          latitude: center?.lat ?? initialRegion?.latitude ?? 34.0407,
-          longitude: center?.lng ?? initialRegion?.longitude ?? -118.2468,
+          latitude: center?.lat ?? initialRegion?.latitude ?? 0,
+          longitude: center?.lng ?? initialRegion?.longitude ?? 0,
         },
       };
     },
@@ -109,7 +109,7 @@ export const MapView = forwardRef(function MapView(
       zoomControl: true,
       attributionControl: true,
     }).setView(
-      [initialRegion?.latitude ?? 34.0407, initialRegion?.longitude ?? -118.2468],
+      [initialRegion?.latitude ?? 0, initialRegion?.longitude ?? 0],
       zoomFromDelta(initialRegion?.latitudeDelta),
     );
 

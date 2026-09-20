@@ -16,6 +16,9 @@ logs/
 .env.local
 .env.*.local
 
+# Local session notes (emails / account IDs — not for a public repo)
+SESSION-HANDOFF.md
+
 # Expo
 .expo/
 .expo-shared/

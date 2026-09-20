@@ -4,10 +4,15 @@ import {
   Alert,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
+  LayoutAnimation,
   Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   Pressable,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -31,17 +36,30 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const [group, setGroup] = useState<Group | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [myUsername, setMyUsername] = useState('you');
   const [draft, setDraft] = useState('');
+  const [pendingPhotos, setPendingPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [composerVisible, setComposerVisible] = useState(true);
+  const composerVisibleRef = useRef(true);
+  const lastOffsetY = useRef(0);
+  const nearBottomRef = useRef(true);
 
   const load = useCallback(async () => {
-    const [groupsRes, messagesRes] = await Promise.all([
+    const [groupsRes, messagesRes, me] = await Promise.all([
       api.getGroups(),
       api.getMessages(groupId),
+      api.getMe(),
     ]);
     setGroup(groupsRes.groups.find((g) => g.id === groupId) ?? null);
-    setMessages(messagesRes.messages);
+    setMyUsername(me.profile.username);
+    setMessages((prev) => {
+      const inFlight = prev.filter((m) => m.status === 'sending' || m.status === 'failed');
+      const incoming = messagesRes.messages.map((m) => ({ ...m, status: 'sent' as const }));
+      const incomingIds = new Set(incoming.map((m) => m.id));
+      return [...incoming, ...inFlight.filter((m) => !incomingIds.has(m.id))];
+    });
   }, [groupId]);
 
   useFocusEffect(
@@ -108,54 +126,126 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
     });
   }, [navigation]);
 
-  const pushMessage = (message: ChatMessage) => {
-    setMessages((prev) => [...prev, message]);
-    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+  const setComposer = (visible: boolean) => {
+    if (composerVisibleRef.current === visible) return;
+    composerVisibleRef.current = visible;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (!visible) Keyboard.dismiss();
+    setComposerVisible(visible);
+  };
+
+  const onChatScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const y = contentOffset.y;
+    const dy = y - lastOffsetY.current;
+    lastOffsetY.current = y;
+    const distanceFromBottom = contentSize.height - layoutMeasurement.height - y;
+    nearBottomRef.current = distanceFromBottom < 64;
+    if (nearBottomRef.current) {
+      setComposer(true);
+      return;
+    }
+    if (dy < -24) setComposer(false);
+    if (dy > 24) setComposer(true);
   };
 
   const send = async () => {
     const body = draft.trim();
-    if (!body || sending) return;
+    const photos = [...pendingPhotos];
+    if ((!body && photos.length === 0) || sending) return;
+    const userId = session?.user.id;
+    if (!userId) return;
+
     setSending(true);
-    try {
-      const { message } = await api.sendMessage(groupId, { body });
-      setDraft('');
-      pushMessage(message);
-    } catch (e) {
-      Alert.alert('Could not send', e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setSending(false);
+    setDraft('');
+    setPendingPhotos([]);
+
+    const username = myUsername.trim() || 'you';
+    const now = Date.now();
+    const outgoing: ChatMessage[] = [];
+    if (body) {
+      outgoing.push({
+        id: `local-${now}-text`,
+        groupId,
+        userId,
+        username,
+        body,
+        createdAt: new Date().toISOString(),
+        status: 'sending',
+      });
+    }
+    photos.forEach((photo, index) => {
+      outgoing.push({
+        id: `local-${now}-photo-${index}`,
+        groupId,
+        userId,
+        username,
+        body: '',
+        createdAt: new Date().toISOString(),
+        imageUrl: photo.uri,
+        status: 'sending',
+      });
+    });
+
+    setMessages((prev) => [...prev, ...outgoing]);
+    setSending(false);
+    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+
+    for (const item of outgoing) {
+      try {
+        const { message } = await api.sendMessage(groupId, {
+          body: item.body || undefined,
+          imageUri: item.imageUrl,
+        });
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === item.id
+              ? {
+                  ...message,
+                  imageUrl: message.imageUrl ?? item.imageUrl,
+                  status: 'sent',
+                }
+              : m,
+          ),
+        );
+      } catch (e) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === item.id ? { ...m, status: 'failed' } : m)),
+        );
+        Alert.alert('Could not send', e instanceof Error ? e.message : 'Unknown error');
+      }
     }
   };
 
-  const sendPhoto = async (from: 'library' | 'camera') => {
+  const attachPhotos = async (from: 'library' | 'camera') => {
     if (sending) return;
-    if (from === 'library') {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Permission needed', 'Allow photo library access to send a picture.');
-        return;
-      }
-    } else {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Permission needed', 'Allow camera access to take a picture.');
-        return;
-      }
-    }
-    const result =
-      from === 'library'
-        ? await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 })
-        : await ImagePicker.launchCameraAsync({ quality: 0.8 });
-    if (result.canceled || !result.assets[0]) return;
-    setSending(true);
     try {
-      const { message } = await api.sendMessage(groupId, { imageUri: result.assets[0].uri });
-      pushMessage(message);
+      if (from === 'library') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Permission needed', 'Allow photo library access to send a picture.');
+          return;
+        }
+      } else {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Permission needed', 'Allow camera access to take a picture.');
+          return;
+        }
+      }
+      const result =
+        from === 'library'
+          ? await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              allowsMultipleSelection: true,
+              selectionLimit: 8,
+              quality: 0.8,
+            })
+          : await ImagePicker.launchCameraAsync({ quality: 0.8 });
+      if (result.canceled || result.assets.length === 0) return;
+      setPendingPhotos((prev) => [...prev, ...result.assets].slice(0, 8));
     } catch (e) {
-      Alert.alert('Could not send photo', e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setSending(false);
+      Alert.alert('Could not add photos', e instanceof Error ? e.message : 'Unknown error');
     }
   };
 
@@ -164,15 +254,15 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
       ActionSheetIOS.showActionSheetWithOptions(
         { options: ['Cancel', 'Take photo', 'Choose from library'], cancelButtonIndex: 0 },
         (index) => {
-          if (index === 1) void sendPhoto('camera');
-          if (index === 2) void sendPhoto('library');
+          if (index === 1) void attachPhotos('camera');
+          if (index === 2) void attachPhotos('library');
         },
       );
       return;
     }
-    Alert.alert('Send a photo', undefined, [
-      { text: 'Take photo', onPress: () => void sendPhoto('camera') },
-      { text: 'Choose from library', onPress: () => void sendPhoto('library') },
+    Alert.alert('Add photos', undefined, [
+      { text: 'Take photo', onPress: () => void attachPhotos('camera') },
+      { text: 'Choose from library', onPress: () => void attachPhotos('library') },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
@@ -191,7 +281,13 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         contentContainerStyle={styles.chatContent}
         data={messages}
         keyExtractor={(m) => m.id}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+        onContentSizeChange={() => {
+          if (nearBottomRef.current) listRef.current?.scrollToEnd({ animated: false });
+        }}
+        onScroll={onChatScroll}
+        scrollEventThrottle={16}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           <Text style={styles.empty}>No messages yet. Say what you noticed about a place.</Text>
         }
@@ -227,6 +323,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                       styles.photo,
                       mine && lastInGroup ? styles.photoMineTail : null,
                       !mine && lastInGroup ? styles.photoTheirsTail : null,
+                      item.status === 'sending' ? styles.photoSending : null,
                     ]}
                   />
                 ) : null}
@@ -244,6 +341,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                   </View>
                 ) : null}
               </View>
+              {mine ? <SendReceipt status={item.status} /> : null}
             </View>
           );
         }}
@@ -270,27 +368,80 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         </View>
       </Modal>
 
-      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-        <Pressable onPress={openPhotoPicker} hitSlop={8} style={styles.mediaBtn} accessibilityLabel="Send a photo">
-          <Ionicons name="image-outline" size={26} color={colors.primary} />
-        </Pressable>
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          placeholder="Message..."
-          placeholderTextColor={colors.textMuted}
-          style={styles.input}
-          multiline
-        />
+      {composerVisible ? (
+        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+          <Pressable onPress={openPhotoPicker} hitSlop={8} style={styles.mediaBtn} accessibilityLabel="Add photos">
+            <Ionicons name="image-outline" size={26} color={colors.primary} />
+          </Pressable>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            onFocus={() => setComposer(true)}
+            placeholder="Message..."
+            placeholderTextColor={colors.textMuted}
+            style={styles.input}
+            multiline
+          />
+          {pendingPhotos.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.pendingStrip}
+              contentContainerStyle={styles.pendingContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              {pendingPhotos.map((photo, index) => (
+                <Pressable
+                  key={`${photo.uri}-${index}`}
+                  onPress={() => setPendingPhotos((prev) => prev.filter((_, i) => i !== index))}
+                  style={styles.pendingThumbWrap}
+                >
+                  <Image source={{ uri: photo.uri }} style={styles.pendingThumb} />
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+          <Pressable
+            onPress={send}
+            disabled={(!draft.trim() && pendingPhotos.length === 0) || sending}
+            style={[
+              styles.send,
+              (!draft.trim() && pendingPhotos.length === 0) || sending ? styles.sendOff : null,
+            ]}
+          >
+            <Ionicons name="arrow-up" size={20} color={colors.onPrimary} />
+          </Pressable>
+        </View>
+      ) : (
         <Pressable
-          onPress={send}
-          disabled={!draft.trim() || sending}
-          style={[styles.send, !draft.trim() || sending ? styles.sendOff : null]}
-        >
-          <Ionicons name="arrow-up" size={20} color={colors.onPrimary} />
-        </Pressable>
-      </View>
+          onPress={() => setComposer(true)}
+          style={[styles.composerPeek, { height: Math.max(insets.bottom, spacing.md) }]}
+          accessibilityLabel="Show message box"
+        />
+      )}
     </KeyboardAvoidingView>
+  );
+}
+
+function SendReceipt({ status }: { status?: ChatMessage['status'] }) {
+  const sending = status === 'sending';
+  const failed = status === 'failed';
+  return (
+    <View
+      style={[
+        styles.receipt,
+        sending ? styles.receiptSending : null,
+        !sending && !failed ? styles.receiptSent : null,
+        failed ? styles.receiptFailed : null,
+      ]}
+      accessibilityLabel={failed ? 'Failed to send' : sending ? 'Sending' : 'Sent'}
+    >
+      <Ionicons
+        name={failed ? 'close' : 'checkmark'}
+        size={9}
+        color={failed ? colors.danger : sending ? colors.primary : colors.onPrimary}
+      />
+    </View>
   );
 }
 
@@ -371,6 +522,31 @@ const styles = StyleSheet.create({
   photoTheirsTail: {
     borderBottomLeftRadius: 6,
   },
+  photoSending: {
+    opacity: 0.72,
+  },
+  receipt: {
+    alignItems: 'center',
+    borderRadius: 8,
+    height: 16,
+    justifyContent: 'center',
+    marginBottom: 2,
+    marginLeft: 4,
+    width: 16,
+  },
+  receiptSending: {
+    backgroundColor: 'transparent',
+    borderColor: colors.primary,
+    borderWidth: 1.5,
+  },
+  receiptSent: {
+    backgroundColor: colors.primary,
+  },
+  receiptFailed: {
+    backgroundColor: 'transparent',
+    borderColor: colors.danger,
+    borderWidth: 1.5,
+  },
   bubble: {
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -410,11 +586,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
   },
+  composerPeek: {
+    backgroundColor: colors.background,
+  },
   mediaBtn: {
     alignItems: 'center',
     height: 44,
     justifyContent: 'center',
     width: 32,
+  },
+  pendingStrip: {
+    maxWidth: 132,
+  },
+  pendingContent: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  pendingThumbWrap: {
+    height: 44,
+    width: 44,
+  },
+  pendingThumb: {
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    height: 44,
+    width: 44,
   },
   input: {
     backgroundColor: colors.surface,

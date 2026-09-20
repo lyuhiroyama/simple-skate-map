@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import type { ChatMessage, Group, GroupMember, PendingUpload, SpotDetail, SpotPin } from '../types';
+import type { ChatMessage, Group, GroupMember, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
 
 const USER_ID = 'preview-user';
 const STORE_KEY = 'mcu-demo-v2';
@@ -94,6 +94,7 @@ let groups: Group[] = seedGroups.map((g) => ({ ...g }));
 let membersByGroup: Record<string, GroupMember[]> = JSON.parse(JSON.stringify(seedMembers));
 let spots: SpotDetail[] = seedSpots.map((s) => ({ ...s, media: [...s.media] }));
 let messagesByGroup: Record<string, ChatMessage[]> = {};
+let previewUsername = 'you';
 
 function pin(spot: SpotDetail): SpotPin {
   return {
@@ -110,7 +111,7 @@ function pin(spot: SpotDetail): SpotPin {
 async function persist() {
   await AsyncStorage.setItem(
     STORE_KEY,
-    JSON.stringify({ groups, membersByGroup, spots, messagesByGroup }),
+    JSON.stringify({ groups, membersByGroup, spots, messagesByGroup, previewUsername }),
   );
 }
 
@@ -123,6 +124,7 @@ export async function initPreview() {
       membersByGroup?: Record<string, GroupMember[]>;
       spots?: SpotDetail[];
       messagesByGroup?: Record<string, ChatMessage[]>;
+      previewUsername?: string;
     };
     if (parsed.groups) groups = parsed.groups;
     if (parsed.membersByGroup) membersByGroup = parsed.membersByGroup;
@@ -137,6 +139,7 @@ export async function initPreview() {
       }));
     }
     if (parsed.messagesByGroup) messagesByGroup = parsed.messagesByGroup;
+    if (parsed.previewUsername) previewUsername = parsed.previewUsername;
   } catch {
     // keep seed data if storage is corrupt
   }
@@ -161,7 +164,7 @@ export const previewApi = {
     membersByGroup[group.id] = [
       {
         userId: USER_ID,
-        username: 'you',
+        username: previewUsername,
         role: 'owner',
         joinedAt: group.createdAt,
       },
@@ -216,7 +219,7 @@ export const previewApi = {
       id: `msg-${Date.now()}`,
       groupId,
       userId: USER_ID,
-      username: 'you',
+      username: previewUsername,
       body: text,
       createdAt: new Date().toISOString(),
       imageUrl,
@@ -306,5 +309,38 @@ export const previewApi = {
     const index = spots.findIndex((s) => s.id === spotId);
     if (index >= 0) spots.splice(index, 1);
     await persist();
+  },
+
+  getMe: async () => ({
+    profile: {
+      id: USER_ID,
+      username: previewUsername,
+      createdAt: '2026-06-01T00:00:00.000Z',
+    } satisfies Profile,
+  }),
+
+  updateUsername: async (username: string) => {
+    const next = username.trim();
+    if (next.length < 2 || next.length > 32 || !/^[a-zA-Z0-9_]+$/.test(next)) {
+      throw new Error('Use 2–32 letters, numbers, and underscores');
+    }
+    previewUsername = next;
+    for (const members of Object.values(membersByGroup)) {
+      for (const member of members) {
+        if (member.userId === USER_ID) member.username = next;
+      }
+    }
+    for (const list of Object.values(messagesByGroup)) {
+      for (const message of list) {
+        if (message.userId === USER_ID) message.username = next;
+      }
+    }
+    for (const spot of spots) {
+      if (spot.createdBy === USER_ID) spot.createdByUsername = next;
+    }
+    await persist();
+    return {
+      profile: { id: USER_ID, username: next, createdAt: '2026-06-01T00:00:00.000Z' },
+    };
   },
 };

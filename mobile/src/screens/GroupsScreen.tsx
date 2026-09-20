@@ -3,8 +3,10 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -24,17 +26,25 @@ export function GroupsScreen() {
   const navigation = useNavigation<Nav>();
   const { signOut } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [username, setUsername] = useState('');
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [usernameOpen, setUsernameOpen] = useState(false);
+  const [savingUsername, setSavingUsername] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const { groups: g } = await api.getGroups();
+      const [{ groups: g }, me] = await Promise.all([api.getGroups(), api.getMe()]);
       setGroups(g);
+      setUsername(me.profile.username);
     } catch (e) {
       Alert.alert('Could not load groups', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -79,7 +89,31 @@ export function GroupsScreen() {
     }
   };
 
+  const openUsername = () => {
+    setUsernameDraft(username);
+    setUsernameOpen(true);
+  };
+
+  const saveUsername = async () => {
+    const next = usernameDraft.trim();
+    if (next.length < 2 || next.length > 32 || !/^[a-zA-Z0-9_]+$/.test(next)) {
+      Alert.alert('Invalid username', 'Use 2–32 letters, numbers, and underscores.');
+      return;
+    }
+    setSavingUsername(true);
+    try {
+      const { profile } = await api.updateUsername(next);
+      setUsername(profile.username);
+      setUsernameOpen(false);
+    } catch (e) {
+      Alert.alert('Could not save', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setSavingUsername(false);
+    }
+  };
+
   return (
+    <>
     <FlatList
       style={styles.root}
       contentContainerStyle={styles.content}
@@ -112,10 +146,16 @@ export function GroupsScreen() {
         </View>
       }
       ListEmptyComponent={
-        <EmptyState
-          title="No groups yet"
-          subtitle="Create one above, or join with an invite code."
-        />
+        loading ? (
+          <View style={styles.loading}>
+            <ActivityIndicator color={colors.primary} />
+          </View>
+        ) : (
+          <EmptyState
+            title="No groups yet"
+            subtitle="Create one above, or join with an invite code."
+          />
+        )
       }
       renderItem={({ item }) => (
         <Pressable
@@ -135,10 +175,59 @@ export function GroupsScreen() {
       )}
       ListFooterComponent={
         <View style={styles.footer}>
-          <Button title="Sign out" variant="secondary" onPress={() => signOut()} />
+          <View style={styles.footerRow}>
+            <Pressable
+              onPress={openUsername}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Username"
+              style={styles.footerBtn}
+            >
+              <Text style={styles.footerBtnText}>Username</Text>
+            </Pressable>
+            <Pressable
+              onPress={() =>
+                Alert.alert('Sign out?', 'You will need to sign in again to use the app.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
+                ])
+              }
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Sign out"
+              style={styles.footerBtn}
+            >
+              <Text style={styles.footerBtnText}>Sign out</Text>
+            </Pressable>
+          </View>
         </View>
       }
     />
+    <Modal
+      visible={usernameOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setUsernameOpen(false)}
+    >
+      <View style={styles.dialogBackdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setUsernameOpen(false)} />
+        <View style={styles.dialog}>
+          <Text style={styles.dialogTitle}>Username</Text>
+          <Text style={styles.dialogBody}>This is what people in your groups will see.</Text>
+          <Field
+            value={usernameDraft}
+            onChangeText={setUsernameDraft}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="e.g. lyu"
+            maxLength={32}
+          />
+          <Button title="Save" onPress={saveUsername} loading={savingUsername} />
+          <Button title="Cancel" variant="secondary" onPress={() => setUsernameOpen(false)} />
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -148,9 +237,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
+    flexGrow: 1,
     gap: spacing.sm,
     padding: spacing.lg,
-    paddingBottom: spacing.xl * 2,
+    paddingBottom: spacing.xl * 3,
   },
   header: {
     gap: spacing.md,
@@ -166,6 +256,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 20,
     fontWeight: '800',
+  },
+  loading: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
   },
   card: {
     alignItems: 'center',
@@ -190,6 +284,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   footer: {
-    marginTop: spacing.lg,
+    marginTop: 'auto',
+    paddingTop: spacing.xl * 2,
+  },
+  footerRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.lg,
+    justifyContent: 'center',
+  },
+  footerBtn: {
+    paddingVertical: spacing.sm,
+  },
+  footerBtnText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  dialogBackdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  dialog: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.lg,
+    width: '100%',
+  },
+  dialogTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  dialogBody: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
   },
 });

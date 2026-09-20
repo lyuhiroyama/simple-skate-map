@@ -1,5 +1,6 @@
 import cors from 'cors';
 import express from 'express';
+import { z } from 'zod';
 import { env } from './env.js';
 import { requireAuth } from './middleware/auth.js';
 import { groupsRouter } from './routes/groups.js';
@@ -24,6 +25,43 @@ app.get('/me', requireAuth, async (req, res) => {
     .from('profiles')
     .select('id, username, created_at')
     .eq('id', req.userId)
+    .single();
+  if (error) throw error;
+  res.json({ profile: { id: data.id, username: data.username, createdAt: data.created_at } });
+});
+
+const usernameSchema = z
+  .string()
+  .trim()
+  .min(2, 'Username must be 2–32 characters')
+  .max(32, 'Username must be 2–32 characters')
+  .regex(/^[a-zA-Z0-9_]+$/, 'Use letters, numbers, and underscores only');
+
+app.patch('/me', requireAuth, async (req, res) => {
+  const parsed = usernameSchema.safeParse(req.body?.username);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid username' });
+    return;
+  }
+  const username = parsed.data;
+
+  const { data: taken, error: takenError } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('username', username)
+    .neq('id', req.userId)
+    .maybeSingle();
+  if (takenError) throw takenError;
+  if (taken) {
+    res.status(409).json({ error: 'That username is taken' });
+    return;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .update({ username })
+    .eq('id', req.userId)
+    .select('id, username, created_at')
     .single();
   if (error) throw error;
   res.json({ profile: { id: data.id, username: data.username, createdAt: data.created_at } });
