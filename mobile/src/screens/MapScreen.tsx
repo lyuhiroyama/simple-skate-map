@@ -113,7 +113,7 @@ export function MapScreen() {
   }, []);
 
   const visibleSpots = activeGroupId
-    ? spots.filter((s) => s.groupId === activeGroupId)
+    ? spots.filter((s) => s.groupIds.includes(activeGroupId))
     : spots;
 
   const onLongPress = (event: LongPressEvent) => {
@@ -122,13 +122,6 @@ export function MapScreen() {
   };
 
   const goToAddSpot = (latitude: number, longitude: number) => {
-    if (groups.length === 0) {
-      Alert.alert(
-        'No group yet',
-        'Create or join a group first (Groups tab) so your pins have somewhere to live.',
-      );
-      return;
-    }
     navigation.navigate('AddSpot', { latitude, longitude });
   };
 
@@ -162,7 +155,7 @@ export function MapScreen() {
         ))}
       </MapView>
 
-      {groups.length > 1 ? (
+      {groups.length > 0 ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -170,7 +163,7 @@ export function MapScreen() {
           contentContainerStyle={styles.chipsContent}
         >
           <Chip
-            label="All groups"
+            label="All"
             active={activeGroupId === null}
             onPress={() => setActiveGroupId(null)}
           />

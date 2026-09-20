@@ -29,7 +29,7 @@ export function AddSpotScreen({ route, navigation }: RootStackScreenProps<'AddSp
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
   const [groups, setGroups] = useState<Group[]>([]);
-  const [groupId, setGroupId] = useState<string | null>(null);
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [assets, setAssets] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [saving, setSaving] = useState(false);
   const [savingLabel, setSavingLabel] = useState('Save spot');
@@ -39,10 +39,9 @@ export function AddSpotScreen({ route, navigation }: RootStackScreenProps<'AddSp
       .getGroups()
       .then(({ groups: g }) => {
         setGroups(g);
-        if (g.length > 0) setGroupId(g[0].id);
       })
       .catch(() => {
-        Alert.alert('Could not load your groups');
+        setGroups([]);
       });
   }, []);
 
@@ -108,16 +107,12 @@ export function AddSpotScreen({ route, navigation }: RootStackScreenProps<'AddSp
       Alert.alert('Hold up', 'Give the spot a name.');
       return;
     }
-    if (!groupId) {
-      Alert.alert('Hold up', 'Pick a group to share this spot with.');
-      return;
-    }
 
     setSaving(true);
     try {
       setSavingLabel('Creating spot...');
       const { spot } = await api.createSpot({
-        groupId,
+        groupIds,
         name: name.trim(),
         description: description.trim(),
         address: address.trim(),
@@ -182,21 +177,33 @@ export function AddSpotScreen({ route, navigation }: RootStackScreenProps<'AddSp
         />
 
         <Text style={styles.label}>Share with</Text>
-        <View style={styles.groupRow}>
-          {groups.map((g) => (
-            <Pressable
-              key={g.id}
-              onPress={() => setGroupId(g.id)}
-              style={[styles.groupChip, groupId === g.id ? styles.groupChipActive : null]}
-            >
-              <Text
-                style={[styles.groupChipText, groupId === g.id ? styles.groupChipTextActive : null]}
-              >
-                {g.name}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        {groups.length === 0 ? (
+          <Text style={styles.shareHint}>Just you, unless you join a group later.</Text>
+        ) : (
+          <>
+            <Text style={styles.shareHint}>Tap any groups to share. None selected = only you.</Text>
+            <View style={styles.groupRow}>
+            {groups.map((g) => {
+              const on = groupIds.includes(g.id);
+              return (
+                <Pressable
+                  key={g.id}
+                  onPress={() =>
+                    setGroupIds((prev) =>
+                      on ? prev.filter((id) => id !== g.id) : [...prev, g.id],
+                    )
+                  }
+                  style={[styles.groupChip, on ? styles.groupChipActive : null]}
+                >
+                  <Text style={[styles.groupChipText, on ? styles.groupChipTextActive : null]}>
+                    {g.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          </>
+        )}
 
         <Text style={styles.label}>Photos & videos</Text>
         <View style={styles.mediaRow}>
@@ -262,6 +269,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
+  },
+  shareHint: {
+    color: colors.textMuted,
+    fontSize: 14,
   },
   groupChip: {
     backgroundColor: colors.surface,

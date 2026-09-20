@@ -7,7 +7,10 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_USE_PRECOMPILED_MODULES": "0"
+        "EXPO_USE_PRECOMPILED_MODULES": "0",
+        "EXPO_PUBLIC_API_URL": "https://simple-skate-map-api.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://utiaogtbhpmibuguyhph.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0aWFvZ3RiaHBtaWJ1Z3V5aHBoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk5MTA4NTMsImV4cCI6MjEwNTQ4Njg1M30.g2cAhIsFYq2fEgSj0ACmUBdgN__zQx7EmFUzv4sIliw"
       },
       "ios": {
         "image": "sdk-57"

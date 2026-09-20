@@ -17,7 +17,7 @@ export interface GroupMember {
 
 export interface SpotPin {
   id: string;
-  groupId: string;
+  groupIds: string[];
   name: string;
   address: string;
   latitude: number;

@@ -103,7 +103,7 @@ const liveApi = {
   getSpot: (spotId: string) => request<{ spot: SpotDetail }>(`/spots/${spotId}`),
 
   createSpot: (input: {
-    groupId: string;
+    groupIds?: string[];
     name: string;
     description: string;
     address: string;

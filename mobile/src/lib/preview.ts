@@ -43,7 +43,7 @@ const seedMembers: Record<string, GroupMember[]> = {
 const seedSpots: SpotDetail[] = [
   {
     id: 'spot-pershing',
-    groupId: 'crew-dtla',
+    groupIds: ['crew-dtla'],
     name: 'Pershing Square ledges',
     address: '532 S Olive St, Los Angeles',
     latitude: 34.0483,
@@ -64,7 +64,7 @@ const seedSpots: SpotDetail[] = [
   },
   {
     id: 'spot-spring',
-    groupId: 'crew-dtla',
+    groupIds: ['crew-dtla'],
     name: 'Spring Street stair',
     address: '3rd & Spring, Los Angeles',
     latitude: 34.0425,
@@ -77,7 +77,7 @@ const seedSpots: SpotDetail[] = [
   },
   {
     id: 'spot-schoolyard',
-    groupId: 'crew-dtla',
+    groupIds: ['crew-dtla'],
     name: '3rd & Hill plaza',
     address: 'Near 3rd & Hill, Los Angeles',
     latitude: 34.0405,
@@ -98,7 +98,7 @@ let messagesByGroup: Record<string, ChatMessage[]> = {};
 function pin(spot: SpotDetail): SpotPin {
   return {
     id: spot.id,
-    groupId: spot.groupId,
+    groupIds: spot.groupIds ?? [],
     name: spot.name,
     address: spot.address,
     latitude: spot.latitude,
@@ -126,7 +126,16 @@ export async function initPreview() {
     };
     if (parsed.groups) groups = parsed.groups;
     if (parsed.membersByGroup) membersByGroup = parsed.membersByGroup;
-    if (parsed.spots) spots = parsed.spots;
+    if (parsed.spots) {
+      spots = parsed.spots.map((s) => ({
+        ...s,
+        groupIds:
+          s.groupIds ??
+          ('groupId' in s && typeof (s as { groupId?: string }).groupId === 'string'
+            ? [(s as { groupId: string }).groupId]
+            : []),
+      }));
+    }
     if (parsed.messagesByGroup) messagesByGroup = parsed.messagesByGroup;
   } catch {
     // keep seed data if storage is corrupt
@@ -218,7 +227,9 @@ export const previewApi = {
   },
 
   getSpots: async (groupId?: string) => ({
-    spots: spots.filter((s) => (groupId ? s.groupId === groupId : true)).map(pin),
+    spots: spots
+      .filter((s) => (groupId ? (s.groupIds ?? []).includes(groupId) : true))
+      .map(pin),
   }),
 
   getSpot: async (spotId: string) => {
@@ -228,7 +239,7 @@ export const previewApi = {
   },
 
   createSpot: async (input: {
-    groupId: string;
+    groupIds?: string[];
     name: string;
     description: string;
     address: string;
@@ -237,7 +248,7 @@ export const previewApi = {
   }) => {
     const spot: SpotDetail = {
       id: `spot-${Date.now()}`,
-      groupId: input.groupId,
+      groupIds: input.groupIds ?? [],
       name: input.name,
       address: input.address,
       latitude: input.latitude,

@@ -2,56 +2,97 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { MEDIA_BUCKET, supabaseAdmin } from '../supabase.js';
-import { isGroupMember, memberGroupIds } from '../lib/membership.js';
+import { canAccessSpot, isGroupMember, memberGroupIds } from '../lib/membership.js';
 
 export const spotsRouter = Router();
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour
 
-/**
- * List spots across all my groups (or one group via ?groupId=).
- * Lightweight payload for rendering map pins.
- */
-spotsRouter.get('/', async (req, res) => {
-  const groupIds = await memberGroupIds(req.userId);
-  const groupId = typeof req.query.groupId === 'string' ? req.query.groupId : undefined;
+type ShareRow = { group_id: string };
 
-  let targetIds = groupIds;
-  if (groupId) {
-    if (!groupIds.includes(groupId)) {
-      res.status(403).json({ error: 'You are not a member of this group' });
-      return;
-    }
-    targetIds = [groupId];
-  }
+function groupIdsFrom(shares: ShareRow[] | null | undefined): string[] {
+  return (shares ?? []).map((s) => s.group_id);
+}
 
-  if (targetIds.length === 0) {
-    res.json({ spots: [] });
-    return;
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from('spots')
-    .select('id, group_id, name, address, latitude, longitude, created_at')
-    .in('group_id', targetIds)
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-
-  const spots = (data ?? []).map((s) => ({
+function mapPin(s: {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  created_at: string;
+  spot_shares?: ShareRow[] | null;
+}) {
+  return {
     id: s.id,
-    groupId: s.group_id,
+    groupIds: groupIdsFrom(s.spot_shares),
     name: s.name,
     address: s.address,
     latitude: s.latitude,
     longitude: s.longitude,
     createdAt: s.created_at,
-  }));
+  };
+}
 
-  res.json({ spots });
+/**
+ * List spots I created, plus spots shared with my groups.
+ * ?groupId= limits to pins shared with that group.
+ */
+spotsRouter.get('/', async (req, res) => {
+  const myGroups = await memberGroupIds(req.userId);
+  const groupId = typeof req.query.groupId === 'string' ? req.query.groupId : undefined;
+
+  if (groupId) {
+    if (!myGroups.includes(groupId)) {
+      res.status(403).json({ error: 'You are not a member of this group' });
+      return;
+    }
+    const { data, error } = await supabaseAdmin
+      .from('spot_shares')
+      .select(
+        'spots!inner(id, name, address, latitude, longitude, created_at, spot_shares(group_id))',
+      )
+      .eq('group_id', groupId);
+    if (error) throw error;
+    const spots = (data ?? [])
+      .map((row) => row.spots as unknown as Parameters<typeof mapPin>[0] | Parameters<typeof mapPin>[0][])
+      .flatMap((spot) => (Array.isArray(spot) ? spot : spot ? [spot] : []))
+      .map(mapPin);
+    res.json({ spots });
+    return;
+  }
+
+  const { data: owned, error: ownedError } = await supabaseAdmin
+    .from('spots')
+    .select('id, name, address, latitude, longitude, created_at, spot_shares(group_id)')
+    .eq('created_by', req.userId)
+    .order('created_at', { ascending: false });
+  if (ownedError) throw ownedError;
+
+  const byId = new Map((owned ?? []).map((s) => [s.id, mapPin(s)]));
+
+  if (myGroups.length > 0) {
+    const { data: shared, error: sharedError } = await supabaseAdmin
+      .from('spot_shares')
+      .select(
+        'spots!inner(id, name, address, latitude, longitude, created_at, spot_shares(group_id))',
+      )
+      .in('group_id', myGroups);
+    if (sharedError) throw sharedError;
+    for (const row of shared ?? []) {
+      const raw = row.spots as unknown as Parameters<typeof mapPin>[0] | Parameters<typeof mapPin>[0][] | null;
+      const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      for (const spot of list) {
+        if (!byId.has(spot.id)) byId.set(spot.id, mapPin(spot));
+      }
+    }
+  }
+
+  res.json({ spots: [...byId.values()] });
 });
 
 const createSpotSchema = z.object({
-  groupId: z.string().uuid(),
+  groupIds: z.array(z.string().uuid()).optional().default([]),
   name: z.string().trim().min(1).max(80),
   description: z.string().trim().max(2000).default(''),
   address: z.string().trim().max(300).default(''),
@@ -59,7 +100,7 @@ const createSpotSchema = z.object({
   longitude: z.number().min(-180).max(180),
 });
 
-/** Create a spot in one of my groups. */
+/** Create a personal pin; optionally share it with groups I belong to. */
 spotsRouter.post('/', async (req, res) => {
   const parsed = createSpotSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -67,16 +108,17 @@ spotsRouter.post('/', async (req, res) => {
     return;
   }
 
-  const { groupId, name, description, address, latitude, longitude } = parsed.data;
-  if (!(await isGroupMember(req.userId, groupId))) {
-    res.status(403).json({ error: 'You are not a member of this group' });
-    return;
+  const { groupIds, name, description, address, latitude, longitude } = parsed.data;
+  for (const groupId of groupIds) {
+    if (!(await isGroupMember(req.userId, groupId))) {
+      res.status(403).json({ error: 'You are not a member of one of those groups' });
+      return;
+    }
   }
 
   const { data: spot, error } = await supabaseAdmin
     .from('spots')
     .insert({
-      group_id: groupId,
       created_by: req.userId,
       name,
       description,
@@ -88,7 +130,14 @@ spotsRouter.post('/', async (req, res) => {
     .single();
   if (error) throw error;
 
-  res.status(201).json({ spot: { id: spot.id, groupId: spot.group_id, name: spot.name } });
+  if (groupIds.length > 0) {
+    const { error: shareError } = await supabaseAdmin.from('spot_shares').insert(
+      groupIds.map((groupId) => ({ spot_id: spot.id, group_id: groupId })),
+    );
+    if (shareError) throw shareError;
+  }
+
+  res.status(201).json({ spot: { id: spot.id, groupIds, name: spot.name } });
 });
 
 /** Full spot detail: description, creator, and signed media URLs. */
@@ -96,12 +145,12 @@ spotsRouter.get('/:spotId', async (req, res) => {
   const { data: spot, error } = await supabaseAdmin
     .from('spots')
     .select(
-      'id, group_id, created_by, name, description, address, latitude, longitude, created_at, profiles(username), spot_media(id, storage_path, media_type, created_at)',
+      'id, created_by, name, description, address, latitude, longitude, created_at, profiles(username), spot_media(id, storage_path, media_type, created_at), spot_shares(group_id)',
     )
     .eq('id', req.params.spotId)
     .maybeSingle();
   if (error) throw error;
-  if (!spot || !(await isGroupMember(req.userId, spot.group_id))) {
+  if (!spot || !(await canAccessSpot(req.userId, spot.id))) {
     res.status(404).json({ error: 'Spot not found' });
     return;
   }
@@ -125,7 +174,7 @@ spotsRouter.get('/:spotId', async (req, res) => {
   res.json({
     spot: {
       id: spot.id,
-      groupId: spot.group_id,
+      groupIds: groupIdsFrom(spot.spot_shares),
       createdBy: spot.created_by,
       createdByUsername:
         (spot.profiles as unknown as { username: string } | null)?.username ?? 'unknown',
@@ -161,11 +210,11 @@ spotsRouter.post('/:spotId/media', async (req, res) => {
 
   const { data: spot, error } = await supabaseAdmin
     .from('spots')
-    .select('id, group_id')
+    .select('id')
     .eq('id', req.params.spotId)
     .maybeSingle();
   if (error) throw error;
-  if (!spot || !(await isGroupMember(req.userId, spot.group_id))) {
+  if (!spot || !(await canAccessSpot(req.userId, spot.id))) {
     res.status(404).json({ error: 'Spot not found' });
     return;
   }
