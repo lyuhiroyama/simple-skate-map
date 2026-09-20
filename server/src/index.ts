@@ -33,7 +33,8 @@ app.get('/me', requireAuth, async (req, res) => {
 app.use(
   (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    res.status(500).json({ error: message });
   },
 );
 
