@@ -1,14 +1,19 @@
 {
   "expo": {
-    "name": "Skate Spots",
-    "slug": "skate-spots",
-    "version": "1.0.0",
+    "name": "Mr. Clipped Up",
+    "slug": "mr-clipped-up",
+    "scheme": "mrclippedup",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "web": {
+      "bundler": "metro"
+    },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.skatespots.app",
+      "bundleIdentifier": "com.mrclippedup.app",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Your location is used to show nearby skate spots and to pin new spots on the map.",
         "NSPhotoLibraryUsageDescription": "Photo library access lets you attach photos and videos to skate spots.",
@@ -16,7 +21,11 @@
         "NSMicrophoneUsageDescription": "Microphone access is used when recording videos of skate spots."
       }
     },
+    "android": {
+      "package": "com.mrclippedup.app"
+    },
     "plugins": [
+      "expo-apple-authentication",
       "expo-video",
       [
         "expo-location",
@@ -30,7 +39,8 @@
           "photosPermission": "Photo library access lets you attach photos and videos to skate spots.",
           "cameraPermission": "Camera access lets you snap photos of skate spots."
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }

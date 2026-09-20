@@ -4,26 +4,22 @@ import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
-import { isConfigured } from './src/config';
+import { isDemo } from './src/config';
 import { colors, spacing } from './src/theme';
 
 export default function App() {
-  if (!isConfigured) {
-    return (
-      <View style={styles.configError}>
-        <Text style={styles.configErrorTitle}>Almost there</Text>
-        <Text style={styles.configErrorText}>
-          Copy mobile/.env.example to mobile/.env, fill in your Supabase URL, anon key, and API
-          URL, then restart the dev server.
-        </Text>
-      </View>
-    );
-  }
-
   return (
     <SafeAreaProvider>
       <AuthProvider>
         <StatusBar style="light" />
+        {isDemo ? (
+          <View style={styles.demoBanner}>
+            <Text style={styles.demoBannerText}>
+              Demo mode — sample spots, no live account. Add Supabase keys in mobile/.env to go
+              live.
+            </Text>
+          </View>
+        ) : null}
         <RootNavigator />
       </AuthProvider>
     </SafeAreaProvider>
@@ -31,23 +27,14 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  configError: {
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    flex: 1,
-    gap: spacing.md,
-    justifyContent: 'center',
-    padding: spacing.xl,
+  demoBanner: {
+    backgroundColor: colors.primaryDark,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  configErrorTitle: {
+  demoBannerText: {
     color: colors.text,
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  configErrorText: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 12,
     textAlign: 'center',
   },
 });

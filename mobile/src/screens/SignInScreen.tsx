@@ -1,100 +1,60 @@
+import * as AppleAuthentication from 'expo-apple-authentication';
 import React, { useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-} from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { Button, Field } from '../components/ui';
-import { colors, spacing } from '../theme';
+import { colors, radius, spacing } from '../theme';
 
 export function SignInScreen() {
-  const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { signInWithApple, signInWithGoogle } = useAuth();
+  const [busy, setBusy] = useState<'apple' | 'google' | null>(null);
 
-  const submit = async () => {
-    if (!email.trim() || !password) {
-      Alert.alert('Hold up', 'Email and password are required.');
-      return;
-    }
-    if (mode === 'signUp' && username.trim().length < 2) {
-      Alert.alert('Hold up', 'Pick a username (at least 2 characters).');
-      return;
-    }
-
-    setBusy(true);
-    const error =
-      mode === 'signIn'
-        ? await signIn(email.trim(), password)
-        : await signUp(email.trim(), password, username.trim());
-    setBusy(false);
-
+  const run = async (provider: 'apple' | 'google') => {
+    if (busy) return;
+    setBusy(provider);
+    const error = provider === 'apple' ? await signInWithApple() : await signInWithGoogle();
+    setBusy(null);
     if (error) {
-      Alert.alert('Something went wrong', error);
-    } else if (mode === 'signUp') {
-      Alert.alert(
-        'Check your email',
-        'If email confirmation is enabled, confirm your address before signing in.',
-      );
+      Alert.alert('Could not sign in', error);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.logo}>SKATE SPOTS</Text>
-        <Text style={styles.tagline}>Find it. Skate it. Share it.</Text>
+    <View style={styles.root}>
+      <View style={styles.hero}>
+        <Text style={styles.logo}>MR. CLIPPED UP</Text>
+        <Text style={styles.tagline}>Share spots. Get clipped up.</Text>
+      </View>
 
-        {mode === 'signUp' ? (
-          <Field
-            label="Username"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-            placeholder="e.g. kickflipkid"
+      <View style={styles.actions}>
+        {Platform.OS === 'ios' ? (
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+            cornerRadius={radius.md}
+            style={styles.appleButton}
+            onPress={() => run('apple')}
           />
-        ) : null}
+        ) : (
+          <Pressable
+            onPress={() => run('apple')}
+            disabled={busy !== null}
+            style={({ pressed }) => [styles.appleWeb, { opacity: pressed || busy ? 0.8 : 1 }]}
+          >
+            <Text style={styles.appleWebText}>Continue with Apple</Text>
+          </Pressable>
+        )}
 
-        <Field
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="you@example.com"
-        />
-        <Field
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          placeholder="********"
-        />
-
-        <Button
-          title={mode === 'signIn' ? 'Sign in' : 'Create account'}
-          onPress={submit}
-          loading={busy}
-        />
-
-        <Pressable onPress={() => setMode(mode === 'signIn' ? 'signUp' : 'signIn')}>
-          <Text style={styles.switchText}>
-            {mode === 'signIn' ? "New here? Create an account" : 'Already have an account? Sign in'}
-          </Text>
+        <Pressable
+          onPress={() => run('google')}
+          disabled={busy !== null}
+          style={({ pressed }) => [styles.googleButton, { opacity: pressed || busy ? 0.8 : 1 }]}
+        >
+          <Text style={styles.googleText}>Continue with Google</Text>
         </Pressable>
-      </ScrollView>
-    </KeyboardAvoidingView>
+
+        <Text style={styles.hint}>No passwords. You stay signed in on this phone.</Text>
+      </View>
+    </View>
   );
 }
 
@@ -102,31 +62,65 @@ const styles = StyleSheet.create({
   root: {
     backgroundColor: colors.background,
     flex: 1,
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl * 2,
   },
-  content: {
-    flexGrow: 1,
-    gap: spacing.md,
+  hero: {
+    flex: 1,
     justifyContent: 'center',
-    padding: spacing.lg,
   },
   logo: {
     color: colors.primary,
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: '900',
-    letterSpacing: 2,
+    letterSpacing: 1,
     textAlign: 'center',
   },
   tagline: {
     color: colors.textMuted,
     fontSize: 15,
-    marginBottom: spacing.lg,
+    marginTop: spacing.sm,
     textAlign: 'center',
   },
-  switchText: {
+  actions: {
+    gap: spacing.sm,
+    paddingBottom: spacing.lg,
+  },
+  appleButton: {
+    height: 50,
+    width: '100%',
+  },
+  appleWeb: {
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: radius.md,
+    height: 50,
+    justifyContent: 'center',
+  },
+  appleWebText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  googleButton: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    height: 50,
+    justifyContent: 'center',
+  },
+  googleText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  hint: {
     color: colors.textMuted,
-    fontSize: 14,
-    padding: spacing.sm,
+    fontSize: 13,
+    marginTop: spacing.sm,
     textAlign: 'center',
-    textDecorationLine: 'underline',
   },
 });

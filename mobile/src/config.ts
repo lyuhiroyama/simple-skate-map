@@ -4,4 +4,10 @@ export const config = {
   apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:4000',
 };
 
-export const isConfigured = config.supabaseUrl !== '' && config.supabaseAnonKey !== '';
+/** No live backend yet — use in-memory sample spots so Simulator/web still run. */
+export const isDemo =
+  process.env.EXPO_PUBLIC_PREVIEW === '1' ||
+  !config.supabaseUrl ||
+  !config.supabaseAnonKey ||
+  config.supabaseUrl.includes('YOUR_PROJECT_REF') ||
+  config.supabaseUrl.includes('preview.invalid');

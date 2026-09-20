@@ -33,7 +33,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
   const shareInvite = async () => {
     if (!group) return;
     await Share.share({
-      message: `Join my skate crew "${group.name}" on Skate Spots! Invite code: ${group.inviteCode}`,
+      message: `Join my skate crew "${group.name}" on Mr. Clipped Up! Invite code: ${group.inviteCode}`,
     });
   };
 

@@ -1,4 +1,5 @@
-import { config } from '../config';
+import { config, isDemo } from '../config';
+import { previewApi } from './preview';
 import { supabase } from './supabase';
 import type { Group, GroupMember, PendingUpload, SpotDetail, SpotPin } from '../types';
 
@@ -44,7 +45,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-export const api = {
+const liveApi = {
   getGroups: () => request<{ groups: Group[] }>('/groups'),
 
   createGroup: (name: string) =>
@@ -91,3 +92,5 @@ export const api = {
 
   deleteSpot: (spotId: string) => request<void>(`/spots/${spotId}`, { method: 'DELETE' }),
 };
+
+export const api = isDemo ? previewApi : liveApi;

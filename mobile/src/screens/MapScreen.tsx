@@ -2,7 +2,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, type LongPressEvent } from 'react-native-maps';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
@@ -140,7 +140,11 @@ export function MapScreen() {
       </Pressable>
 
       <View style={styles.hint} pointerEvents="none">
-        <Text style={styles.hintText}>Long-press the map to drop a spot</Text>
+        <Text style={styles.hintText}>
+          {Platform.OS === 'web'
+            ? 'Right-click the map (or tap +) to drop a spot'
+            : 'Long-press the map to drop a spot'}
+        </Text>
       </View>
     </View>
   );

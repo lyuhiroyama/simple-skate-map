@@ -1,0 +1,10 @@
+{
+  "name": "mr-clipped-up",
+  "private": true,
+  "scripts": {
+    "start": "npm run start --prefix mobile",
+    "ios": "npm run ios --prefix mobile",
+    "web": "npm run web --prefix mobile",
+    "server": "npm run dev --prefix server"
+  }
+}

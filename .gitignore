@@ -1,25 +1,47 @@
-# dependencies
-node_modules/
-
-# env / secrets
-.env
-.env.*
-!.env.example
-
-# builds
-dist/
-build/
-*.tsbuildinfo
-
-# expo
-.expo/
-mobile/ios/
-mobile/android/
-expo-env.d.ts
-
 # macOS
 .DS_Store
 
-# logs
-npm-debug.log*
-yarn-error.log*
+# Node
+node_modules/
+npm-debug.*
+yarn-error.*
+.pnp.*
+
+# Logs
+*.log
+logs/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+ios/
+android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Metro / bundler
+.metro-health-check*
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build output
+build/
+coverage/
