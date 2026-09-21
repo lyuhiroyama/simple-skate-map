@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { CHAT_MEDIA_BUCKET, supabaseAdmin } from '../supabase.js';
 import { isGroupMember, memberGroupIds } from '../lib/membership.js';
+import { blockedUserIds, hiddenContentIds } from '../lib/moderation.js';
+import { assertCleanText } from '../lib/wordFilter.js';
 
 export const groupsRouter = Router();
 
@@ -176,8 +178,14 @@ groupsRouter.get('/:groupId/messages', async (req, res) => {
     .order('created_at', { ascending: true });
   if (error) throw error;
 
+  const blocked = new Set(await blockedUserIds(req.userId));
+  const hidden = new Set(await hiddenContentIds(req.userId, 'message'));
+  const visible = (data ?? []).filter(
+    (row) => !blocked.has(row.user_id) && !hidden.has(row.id),
+  );
+
   const messages = await Promise.all(
-    (data ?? []).map(async (row) => {
+    visible.map(async (row) => {
       let imageUrl: string | undefined;
       if (row.storage_path) {
         const { data: signed, error: signError } = await supabaseAdmin.storage
@@ -219,6 +227,7 @@ groupsRouter.post('/:groupId/messages', async (req, res) => {
     res.status(400).json({ error: 'Message is empty' });
     return;
   }
+  if (body) assertCleanText(body, 'Message');
 
   if (!(await isGroupMember(req.userId, req.params.groupId))) {
     res.status(403).json({ error: 'You are not a member of this group' });

@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
+import { confirmBlock, showReportBlockSheet } from '../lib/safety';
+import { useAuth } from '../context/AuthContext';
 import type { ChatMessage } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, spacing } from '../theme';
@@ -20,7 +22,9 @@ const TILE = Math.floor((Dimensions.get('window').width - GAP * (COLS - 1)) / CO
 
 export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) {
   const { groupId } = route.params;
+  const { session } = useAuth();
   const [items, setItems] = useState<ChatMessage[]>([]);
+  const myId = session?.user.id;
 
   useFocusEffect(
     useCallback(() => {
@@ -49,7 +53,33 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
       keyExtractor={(m) => m.id}
       ListEmptyComponent={<Text style={styles.empty}>No photos in this chat yet.</Text>}
       renderItem={({ item }) => (
-        <Pressable style={styles.tile}>
+        <Pressable
+          style={styles.tile}
+          onLongPress={() => {
+            if (item.userId === myId) return;
+            showReportBlockSheet({
+              onReport: async (reason) => {
+                try {
+                  await api.report({ contentType: 'message', contentId: item.id, reason });
+                  setItems((prev) => prev.filter((m) => m.id !== item.id));
+                  Alert.alert('Reported', 'Thanks. You will not see this photo.');
+                } catch (e) {
+                  Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
+                }
+              },
+              onBlock: () =>
+                confirmBlock(item.username, async () => {
+                  try {
+                    await api.blockUser(item.userId);
+                    setItems((prev) => prev.filter((m) => m.userId !== item.userId));
+                  } catch (e) {
+                    Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
+                  }
+                }),
+            });
+          }}
+          delayLongPress={350}
+        >
           <Image source={{ uri: item.imageUrl }} style={styles.image} />
         </Pressable>
       )}

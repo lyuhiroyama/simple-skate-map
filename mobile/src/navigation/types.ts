@@ -6,6 +6,7 @@ export type RootStackParamList = {
   AddSpot: { latitude: number; longitude: number };
   GroupDetail: { groupId: string; groupName: string };
   GroupMedia: { groupId: string; groupName: string };
+  Legal: undefined;
 };
 
 export type RootStackScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<

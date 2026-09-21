@@ -56,6 +56,12 @@ export interface Profile {
   createdAt: string;
 }
 
+export interface BlockedUser {
+  userId: string;
+  username: string;
+  createdAt: string;
+}
+
 export interface PendingUpload {
   media: { id: string; storagePath: string; uploadUrl: string; uploadToken: string };
 }

@@ -2,7 +2,7 @@ import { config, isDemo } from '../config';
 import { previewApi } from './preview';
 import { supabase } from './supabase';
 import * as FileSystem from 'expo-file-system/legacy';
-import type { ChatMessage, Group, GroupMember, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
+import type { BlockedUser, ChatMessage, Group, GroupMember, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
 
 class ApiError extends Error {
   constructor(
@@ -130,6 +130,29 @@ const liveApi = {
       method: 'PATCH',
       body: JSON.stringify({ username }),
     }),
+
+  report: (input: {
+    contentType: 'message' | 'spot' | 'user';
+    contentId?: string;
+    targetUserId?: string;
+    reason: 'inappropriate' | 'harassment' | 'spam' | 'other';
+  }) =>
+    request<{ ok: true }>('/reports', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+
+  getBlocks: () => request<{ blocks: BlockedUser[] }>('/blocks'),
+
+  blockUser: (userId: string) =>
+    request<{ block: { userId: string; username: string } }>('/blocks', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
+
+  unblockUser: (userId: string) => request<void>(`/blocks/${userId}`, { method: 'DELETE' }),
+
+  deleteMe: () => request<void>('/me', { method: 'DELETE' }),
 };
 
 export const api = isDemo ? previewApi : liveApi;

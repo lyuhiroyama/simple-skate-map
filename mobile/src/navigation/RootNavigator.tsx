@@ -9,6 +9,7 @@ import { AddSpotScreen } from '../screens/AddSpotScreen';
 import { GroupDetailScreen } from '../screens/GroupDetailScreen';
 import { GroupMediaScreen } from '../screens/GroupMediaScreen';
 import { GroupsScreen } from '../screens/GroupsScreen';
+import { LegalScreen } from '../screens/LegalScreen';
 import { MapScreen } from '../screens/MapScreen';
 import { SignInScreen } from '../screens/SignInScreen';
 import { SpotDetailScreen } from '../screens/SpotDetailScreen';
@@ -106,6 +107,11 @@ export function RootNavigator() {
             name="GroupMedia"
             component={GroupMediaScreen}
             options={{ title: 'Media' }}
+          />
+          <Stack.Screen
+            name="Legal"
+            component={LegalScreen}
+            options={{ title: 'Privacy & account' }}
           />
         </Stack.Navigator>
       ) : (

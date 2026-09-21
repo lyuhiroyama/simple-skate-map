@@ -2,8 +2,11 @@ import cors from 'cors';
 import express from 'express';
 import { z } from 'zod';
 import { env } from './env.js';
+import { deleteUserAccount } from './lib/account.js';
+import { HttpError } from './lib/httpError.js';
 import { requireAuth } from './middleware/auth.js';
 import { groupsRouter } from './routes/groups.js';
+import { moderationRouter } from './routes/moderation.js';
 import { spotsRouter } from './routes/spots.js';
 import { supabaseAdmin } from './supabase.js';
 
@@ -67,12 +70,20 @@ app.patch('/me', requireAuth, async (req, res) => {
   res.json({ profile: { id: data.id, username: data.username, createdAt: data.created_at } });
 });
 
+app.delete('/me', requireAuth, async (req, res) => {
+  await deleteUserAccount(req.userId);
+  res.status(204).end();
+});
+
+app.use(requireAuth, moderationRouter);
+
 // Central error handler: Express 5 forwards rejected async handlers here.
 app.use(
   (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error(err);
+    const status = err instanceof HttpError ? err.status : 500;
     const message = err instanceof Error ? err.message : 'Internal server error';
-    res.status(500).json({ error: message });
+    res.status(status).json({ error: message });
   },
 );
 

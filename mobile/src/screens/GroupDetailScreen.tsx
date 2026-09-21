@@ -24,6 +24,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../lib/api';
+import { confirmBlock, showReportBlockSheet } from '../lib/safety';
+import { assertCleanText } from '../lib/wordFilter';
 import { useAuth } from '../context/AuthContext';
 import type { ChatMessage, Group } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -156,6 +158,13 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
     const userId = session?.user.id;
     if (!userId) return;
 
+    try {
+      if (body) assertCleanText(body, 'Message');
+    } catch (e) {
+      Alert.alert('Could not send', e instanceof Error ? e.message : 'Unknown error');
+      return;
+    }
+
     setSending(true);
     setDraft('');
     setPendingPhotos([]);
@@ -269,6 +278,30 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
 
   const myId = session?.user.id;
 
+  const onMessageSafety = (item: ChatMessage) => {
+    if (item.userId === myId || item.status === 'sending' || item.status === 'failed') return;
+    showReportBlockSheet({
+      onReport: async (reason) => {
+        try {
+          await api.report({ contentType: 'message', contentId: item.id, reason });
+          setMessages((prev) => prev.filter((m) => m.id !== item.id));
+          Alert.alert('Reported', 'Thanks. You will not see this message.');
+        } catch (e) {
+          Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
+        }
+      },
+      onBlock: () =>
+        confirmBlock(item.username, async () => {
+          try {
+            await api.blockUser(item.userId);
+            setMessages((prev) => prev.filter((m) => m.userId !== item.userId));
+          } catch (e) {
+            Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
+          }
+        }),
+    });
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.root}
@@ -316,6 +349,11 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
               )}
               <View style={[styles.cluster, mine ? styles.clusterMine : null]}>
                 {!mine && firstInGroup ? <Text style={styles.sender}>{item.username}</Text> : null}
+                <Pressable
+                  onLongPress={() => onMessageSafety(item)}
+                  delayLongPress={350}
+                  disabled={mine}
+                >
                 {item.imageUrl ? (
                   <Image
                     source={{ uri: item.imageUrl }}
@@ -340,6 +378,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                     <Text style={[styles.body, mine ? styles.bodyMine : null]}>{item.body}</Text>
                   </View>
                 ) : null}
+                </Pressable>
               </View>
               {mine ? <SendReceipt status={item.status} /> : null}
             </View>

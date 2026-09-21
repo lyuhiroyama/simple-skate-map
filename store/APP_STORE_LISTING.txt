@@ -1,0 +1,88 @@
+Simple Skate Map — paste into App Store Connect
+================================================
+Not submitted for you. Copy these into the listing.
+Privacy + Support URLs only work after the docs are
+on GitHub with the real support email (not personal Gmail).
+
+
+NAME
+Simple Skate Map
+
+SUBTITLE (max 30)
+Pin places you admire
+
+CATEGORY
+Primary: Navigation
+Secondary: Lifestyle (optional)
+
+AGE RATING
+12+
+This app has user-generated photos and chat.
+Do not put it in Kids.
+UGC: Yes
+Unrestricted web access: No
+Gambling: No
+
+
+DESCRIPTION
+
+Simple Skate Map is for documenting street architecture and clips with people you invite.
+
+Pin a place, add photos or video, and share it with a group. Chat about what you noticed. The map is for looking — not a guidebook. Don’t trespass.
+
+Sign in with Apple or Google. No passwords.
+
+You can report or block people, and delete your account in the app (Groups → Privacy & account).
+
+
+KEYWORDS (max 100 characters, comma-separated, no spaces after commas)
+skate,skating,spot,map,street,plaza,photo,clips,architecture,group
+
+
+PRIVACY POLICY URL (after commit + email swap)
+https://github.com/lyuhiroyama/simple-skate-map/blob/main/docs/PRIVACY.md
+
+SUPPORT URL (after commit + email swap)
+https://github.com/lyuhiroyama/simple-skate-map/blob/main/docs/SUPPORT.md
+
+
+PRIVACY NUTRITION LABELS
+Data is used for App Functionality. Not used for tracking. Not sold.
+
+Contact Info
+  Name — username you choose
+
+Location
+  Precise Location — to open the map near you and to save a pin.
+  Collected when you use those features. Linked to your account
+  because spots you create include coordinates.
+
+Photos or Videos
+  Photos and videos you attach to spots or send in chat.
+
+User Content
+  Spots, notes, chat messages, and reports.
+
+Identifiers
+  User ID from Sign in with Apple or Google.
+
+
+REVIEW NOTES
+
+Sign in with Apple or Google (no email/password).
+
+UGC: long-press a chat message or group photo to Report or Block.
+On someone else’s spot, tap Report or block.
+Filtered language is rejected on send.
+Privacy, support, and Delete account: Groups → Privacy & account.
+
+The app is for documenting places you admire, not for finding
+spots to skate. Do not trespass.
+
+
+SCREENSHOTS
+Upload the 6.9" set (1320×2868, 1290×2796, or 1260×2736).
+Apple scales that set to smaller iPhones.
+PNG/JPEG, no alpha/transparency.
+Prefer shots from a real iPhone (TestFlight) if these
+simulator files look off — especially the map.

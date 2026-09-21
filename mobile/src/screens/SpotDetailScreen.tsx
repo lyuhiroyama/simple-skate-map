@@ -15,6 +15,7 @@ import {
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
+import { confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
 import { EmptyState } from '../components/ui';
 import type { SpotDetail, SpotMedia } from '../types';
@@ -71,6 +72,30 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
         },
       },
     ]);
+  };
+
+  const onSpotSafety = () => {
+    if (!spot) return;
+    showReportBlockSheet({
+      onReport: async (reason) => {
+        try {
+          await api.report({ contentType: 'spot', contentId: spot.id, reason });
+          Alert.alert('Reported', 'Thanks. You will not see this spot.');
+          navigation.goBack();
+        } catch (e) {
+          Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
+        }
+      },
+      onBlock: () =>
+        confirmBlock(spot.createdByUsername, async () => {
+          try {
+            await api.blockUser(spot.createdBy);
+            navigation.goBack();
+          } catch (e) {
+            Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
+          }
+        }),
+    });
   };
 
   if (error) {
@@ -161,7 +186,17 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
             <Text style={styles.deleteText}>Delete spot</Text>
           )}
         </Pressable>
-      ) : null}
+      ) : (
+        <Pressable
+          onPress={onSpotSafety}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Report or block"
+          style={styles.deleteWrap}
+        >
+          <Text style={styles.deleteText}>Report or block</Text>
+        </Pressable>
+      )}
     </ScrollView>
   );
 }

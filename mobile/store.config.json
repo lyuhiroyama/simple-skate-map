@@ -1,0 +1,46 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "categories": ["NAVIGATION", "LIFESTYLE"],
+    "advisory": {
+      "alcoholTobaccoOrDrugUseOrReferences": "NONE",
+      "contests": "NONE",
+      "gamblingSimulated": "NONE",
+      "horrorOrFearThemes": "NONE",
+      "matureOrSuggestiveThemes": "INFREQUENT_OR_MILD",
+      "medicalOrTreatmentInformation": "NONE",
+      "profanityOrCrudeHumor": "INFREQUENT_OR_MILD",
+      "sexualContentGraphicAndNudity": "NONE",
+      "sexualContentOrNudity": "NONE",
+      "violenceCartoonOrFantasy": "NONE",
+      "violenceRealistic": "NONE",
+      "violenceRealisticProlongedGraphicOrSadistic": "NONE",
+      "gambling": false,
+      "unrestrictedWebAccess": false,
+      "kidsAgeBand": null,
+      "ageRatingOverride": "NONE",
+      "koreaAgeRatingOverride": "NONE"
+    },
+    "info": {
+      "en-US": {
+        "title": "Simple Skate Map",
+        "subtitle": "Pin places you admire",
+        "description": "Simple Skate Map is for documenting street architecture and clips with people you invite.\n\nPin a place, add photos or video, and share it with a group. Chat about what you noticed. The map is for looking — not a guidebook. Don’t trespass.\n\nSign in with Apple or Google. No passwords.\n\nYou can report or block people, and delete your account in the app (Groups → Privacy & account).",
+        "keywords": [
+          "skate",
+          "skating",
+          "spot",
+          "map",
+          "street",
+          "plaza",
+          "photo",
+          "clips",
+          "architecture",
+          "group"
+        ],
+        "supportUrl": "https://github.com/lyuhiroyama/simple-skate-map/blob/main/docs/SUPPORT.md",
+        "privacyPolicyUrl": "https://github.com/lyuhiroyama/simple-skate-map/blob/main/docs/PRIVACY.md"
+      }
+    }
+  }
+}

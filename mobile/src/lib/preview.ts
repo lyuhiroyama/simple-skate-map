@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import type { ChatMessage, Group, GroupMember, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
+import type { BlockedUser, ChatMessage, Group, GroupMember, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
+import { assertCleanText } from './wordFilter';
 
 const USER_ID = 'preview-user';
-const STORE_KEY = 'mcu-demo-v2';
+const STORE_KEY = 'mcu-demo-v3';
 
 const seedGroups: Group[] = [
   {
@@ -93,8 +94,22 @@ const seedSpots: SpotDetail[] = [
 let groups: Group[] = seedGroups.map((g) => ({ ...g }));
 let membersByGroup: Record<string, GroupMember[]> = JSON.parse(JSON.stringify(seedMembers));
 let spots: SpotDetail[] = seedSpots.map((s) => ({ ...s, media: [...s.media] }));
-let messagesByGroup: Record<string, ChatMessage[]> = {};
+let messagesByGroup: Record<string, ChatMessage[]> = {
+  'crew-dtla': [
+    {
+      id: 'msg-nina-1',
+      groupId: 'crew-dtla',
+      userId: 'user-nina',
+      username: 'nina',
+      body: 'That marble line still looks the same.',
+      createdAt: '2026-06-11T12:00:00.000Z',
+    },
+  ],
+};
 let previewUsername = 'you';
+let blockedUsers: BlockedUser[] = [];
+let hiddenMessages: string[] = [];
+let hiddenSpots: string[] = [];
 
 function pin(spot: SpotDetail): SpotPin {
   return {
@@ -111,7 +126,16 @@ function pin(spot: SpotDetail): SpotPin {
 async function persist() {
   await AsyncStorage.setItem(
     STORE_KEY,
-    JSON.stringify({ groups, membersByGroup, spots, messagesByGroup, previewUsername }),
+    JSON.stringify({
+      groups,
+      membersByGroup,
+      spots,
+      messagesByGroup,
+      previewUsername,
+      blockedUsers,
+      hiddenMessages,
+      hiddenSpots,
+    }),
   );
 }
 
@@ -125,6 +149,9 @@ export async function initPreview() {
       spots?: SpotDetail[];
       messagesByGroup?: Record<string, ChatMessage[]>;
       previewUsername?: string;
+      blockedUsers?: BlockedUser[];
+      hiddenMessages?: string[];
+      hiddenSpots?: string[];
     };
     if (parsed.groups) groups = parsed.groups;
     if (parsed.membersByGroup) membersByGroup = parsed.membersByGroup;
@@ -140,6 +167,9 @@ export async function initPreview() {
     }
     if (parsed.messagesByGroup) messagesByGroup = parsed.messagesByGroup;
     if (parsed.previewUsername) previewUsername = parsed.previewUsername;
+    if (parsed.blockedUsers) blockedUsers = parsed.blockedUsers;
+    if (parsed.hiddenMessages) hiddenMessages = parsed.hiddenMessages;
+    if (parsed.hiddenSpots) hiddenSpots = parsed.hiddenSpots;
   } catch {
     // keep seed data if storage is corrupt
   }
@@ -193,9 +223,15 @@ export const previewApi = {
     await persist();
   },
 
-  getMessages: async (groupId: string) => ({
-    messages: [...(messagesByGroup[groupId] ?? [])],
-  }),
+  getMessages: async (groupId: string) => {
+    const blocked = new Set(blockedUsers.map((b) => b.userId));
+    const hidden = new Set(hiddenMessages);
+    return {
+      messages: (messagesByGroup[groupId] ?? []).filter(
+        (m) => !blocked.has(m.userId) && !hidden.has(m.id),
+      ),
+    };
+  },
 
   sendMessage: async (groupId: string, input: { body?: string; imageUri?: string }) => {
     const text = input.body?.trim() ?? '';
@@ -215,6 +251,7 @@ export const previewApi = {
       }
     }
     if (!text && !imageUrl) throw new Error('Message is empty');
+    if (text) assertCleanText(text, 'Message');
     const message: ChatMessage = {
       id: `msg-${Date.now()}`,
       groupId,
@@ -229,15 +266,24 @@ export const previewApi = {
     return { message };
   },
 
-  getSpots: async (groupId?: string) => ({
-    spots: spots
-      .filter((s) => (groupId ? (s.groupIds ?? []).includes(groupId) : true))
-      .map(pin),
-  }),
+  getSpots: async (groupId?: string) => {
+    const blocked = new Set(blockedUsers.map((b) => b.userId));
+    const hidden = new Set(hiddenSpots);
+    return {
+      spots: spots
+        .filter((s) => (groupId ? (s.groupIds ?? []).includes(groupId) : true))
+        .filter((s) => !hidden.has(s.id) && (s.createdBy === USER_ID || !blocked.has(s.createdBy)))
+        .map(pin),
+    };
+  },
 
   getSpot: async (spotId: string) => {
     const spot = spots.find((s) => s.id === spotId);
     if (!spot) throw new Error('Spot not found');
+    const blocked = new Set(blockedUsers.map((b) => b.userId));
+    if (hiddenSpots.includes(spot.id) || (spot.createdBy !== USER_ID && blocked.has(spot.createdBy))) {
+      throw new Error('Spot not found');
+    }
     return { spot };
   },
 
@@ -249,6 +295,8 @@ export const previewApi = {
     latitude: number;
     longitude: number;
   }) => {
+    assertCleanText(input.name, 'Name');
+    if (input.description) assertCleanText(input.description, 'Notes');
     const spot: SpotDetail = {
       id: `spot-${Date.now()}`,
       groupIds: input.groupIds ?? [],
@@ -342,5 +390,56 @@ export const previewApi = {
     return {
       profile: { id: USER_ID, username: next, createdAt: '2026-06-01T00:00:00.000Z' },
     };
+  },
+
+  report: async (input: {
+    contentType: 'message' | 'spot' | 'user';
+    contentId?: string;
+    targetUserId?: string;
+    reason: 'inappropriate' | 'harassment' | 'spam' | 'other';
+  }) => {
+    if (input.contentType === 'message' && input.contentId) {
+      if (!hiddenMessages.includes(input.contentId)) hiddenMessages.push(input.contentId);
+    }
+    if (input.contentType === 'spot' && input.contentId) {
+      if (!hiddenSpots.includes(input.contentId)) hiddenSpots.push(input.contentId);
+    }
+    await persist();
+    return { ok: true as const };
+  },
+
+  getBlocks: async () => ({ blocks: [...blockedUsers] }),
+
+  blockUser: async (userId: string) => {
+    if (userId === USER_ID) throw new Error('You cannot block yourself');
+    const member = Object.values(membersByGroup)
+      .flat()
+      .find((m) => m.userId === userId);
+    const username = member?.username ?? 'unknown';
+    if (!blockedUsers.some((b) => b.userId === userId)) {
+      blockedUsers.push({
+        userId,
+        username,
+        createdAt: new Date().toISOString(),
+      });
+      await persist();
+    }
+    return { block: { userId, username } };
+  },
+
+  unblockUser: async (userId: string) => {
+    blockedUsers = blockedUsers.filter((b) => b.userId !== userId);
+    await persist();
+  },
+
+  deleteMe: async () => {
+    groups = [];
+    membersByGroup = {};
+    spots = [];
+    messagesByGroup = {};
+    blockedUsers = [];
+    hiddenMessages = [];
+    hiddenSpots = [];
+    await persist();
   },
 };

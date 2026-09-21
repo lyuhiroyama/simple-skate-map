@@ -200,6 +200,15 @@ export function GroupsScreen() {
               <Text style={styles.footerBtnText}>Sign out</Text>
             </Pressable>
           </View>
+          <Pressable
+            onPress={() => navigation.navigate('Legal')}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Privacy and account"
+            style={styles.footerBtn}
+          >
+            <Text style={styles.footerBtnText}>Privacy & account</Text>
+          </Pressable>
         </View>
       }
     />
@@ -284,6 +293,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   footer: {
+    alignItems: 'center',
+    gap: spacing.xs,
     marginTop: 'auto',
     paddingTop: spacing.xl * 2,
   },

@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { MEDIA_BUCKET, supabaseAdmin } from '../supabase.js';
 import { canAccessSpot, isGroupMember, memberGroupIds } from '../lib/membership.js';
+import { blockedUserIds, hiddenContentIds } from '../lib/moderation.js';
+import { assertCleanText } from '../lib/wordFilter.js';
 
 export const spotsRouter = Router();
 
@@ -21,6 +23,7 @@ function mapPin(s: {
   latitude: number;
   longitude: number;
   created_at: string;
+  created_by?: string;
   spot_shares?: ShareRow[] | null;
 }) {
   return {
@@ -41,6 +44,10 @@ function mapPin(s: {
 spotsRouter.get('/', async (req, res) => {
   const myGroups = await memberGroupIds(req.userId);
   const groupId = typeof req.query.groupId === 'string' ? req.query.groupId : undefined;
+  const blocked = new Set(await blockedUserIds(req.userId));
+  const hidden = new Set(await hiddenContentIds(req.userId, 'spot'));
+  const keep = (id: string, createdBy: string | undefined) =>
+    !hidden.has(id) && (!createdBy || createdBy === req.userId || !blocked.has(createdBy));
 
   if (groupId) {
     if (!myGroups.includes(groupId)) {
@@ -50,13 +57,14 @@ spotsRouter.get('/', async (req, res) => {
     const { data, error } = await supabaseAdmin
       .from('spot_shares')
       .select(
-        'spots!inner(id, name, address, latitude, longitude, created_at, spot_shares(group_id))',
+        'spots!inner(id, name, address, latitude, longitude, created_at, created_by, spot_shares(group_id))',
       )
       .eq('group_id', groupId);
     if (error) throw error;
     const spots = (data ?? [])
       .map((row) => row.spots as unknown as Parameters<typeof mapPin>[0] | Parameters<typeof mapPin>[0][])
       .flatMap((spot) => (Array.isArray(spot) ? spot : spot ? [spot] : []))
+      .filter((spot) => keep(spot.id, spot.created_by))
       .map(mapPin);
     res.json({ spots });
     return;
@@ -64,18 +72,20 @@ spotsRouter.get('/', async (req, res) => {
 
   const { data: owned, error: ownedError } = await supabaseAdmin
     .from('spots')
-    .select('id, name, address, latitude, longitude, created_at, spot_shares(group_id)')
+    .select('id, name, address, latitude, longitude, created_at, created_by, spot_shares(group_id)')
     .eq('created_by', req.userId)
     .order('created_at', { ascending: false });
   if (ownedError) throw ownedError;
 
-  const byId = new Map((owned ?? []).map((s) => [s.id, mapPin(s)]));
+  const byId = new Map(
+    (owned ?? []).filter((s) => keep(s.id, s.created_by)).map((s) => [s.id, mapPin(s)]),
+  );
 
   if (myGroups.length > 0) {
     const { data: shared, error: sharedError } = await supabaseAdmin
       .from('spot_shares')
       .select(
-        'spots!inner(id, name, address, latitude, longitude, created_at, spot_shares(group_id))',
+        'spots!inner(id, name, address, latitude, longitude, created_at, created_by, spot_shares(group_id))',
       )
       .in('group_id', myGroups);
     if (sharedError) throw sharedError;
@@ -83,6 +93,7 @@ spotsRouter.get('/', async (req, res) => {
       const raw = row.spots as unknown as Parameters<typeof mapPin>[0] | Parameters<typeof mapPin>[0][] | null;
       const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
       for (const spot of list) {
+        if (!keep(spot.id, spot.created_by)) continue;
         if (!byId.has(spot.id)) byId.set(spot.id, mapPin(spot));
       }
     }
@@ -109,6 +120,8 @@ spotsRouter.post('/', async (req, res) => {
   }
 
   const { groupIds, name, description, address, latitude, longitude } = parsed.data;
+  assertCleanText(name, 'Name');
+  if (description) assertCleanText(description, 'Notes');
   for (const groupId of groupIds) {
     if (!(await isGroupMember(req.userId, groupId))) {
       res.status(403).json({ error: 'You are not a member of one of those groups' });
@@ -151,6 +164,16 @@ spotsRouter.get('/:spotId', async (req, res) => {
     .maybeSingle();
   if (error) throw error;
   if (!spot || !(await canAccessSpot(req.userId, spot.id))) {
+    res.status(404).json({ error: 'Spot not found' });
+    return;
+  }
+
+  const blocked = await blockedUserIds(req.userId);
+  const hidden = await hiddenContentIds(req.userId, 'spot');
+  if (
+    hidden.includes(spot.id) ||
+    (spot.created_by !== req.userId && blocked.includes(spot.created_by))
+  ) {
     res.status(404).json({ error: 'Spot not found' });
     return;
   }
