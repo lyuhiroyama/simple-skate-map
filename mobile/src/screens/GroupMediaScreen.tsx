@@ -16,10 +16,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
 import { confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
-import { chatMediaOf, type ChatMedia } from '../types';
+import { chatMediaOf } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, spacing } from '../theme';
-import { MediaLightbox } from '../components/MediaLightbox';
+import { MediaLightbox, type LightboxItem } from '../components/MediaLightbox';
 
 const GAP = 2;
 const COLS = 3;
@@ -41,9 +41,12 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
   const [loading, setLoading] = useState(true);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const myId = session?.user.id;
-  const lightboxItems: ChatMedia[] = items.map((item) => ({
+  const lightboxItems: LightboxItem[] = items.map((item) => ({
     url: item.url,
     mediaType: item.mediaType,
+    messageId: item.messageId,
+    userId: item.userId,
+    username: item.username,
   }));
 
   useFocusEffect(
@@ -92,6 +95,32 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
     [loading],
   );
 
+  const onTileSafety = (item: MediaTile) => {
+    if (item.userId === myId) return;
+    showReportBlockSheet({
+      onReport: async (reason) => {
+        try {
+          await api.report({ contentType: 'message', contentId: item.messageId, reason });
+          setItems((prev) => prev.filter((m) => m.messageId !== item.messageId));
+          setLightboxIndex(null);
+          Alert.alert('Reported', 'Thanks. You will not see this.');
+        } catch (e) {
+          Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
+        }
+      },
+      onBlock: () =>
+        confirmBlock(item.username, async () => {
+          try {
+            await api.blockUser(item.userId);
+            setItems((prev) => prev.filter((m) => m.userId !== item.userId));
+            setLightboxIndex(null);
+          } catch (e) {
+            Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
+          }
+        }),
+    });
+  };
+
   return (
     <>
       <FlatList
@@ -104,29 +133,7 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
           <Pressable
             style={styles.tile}
             onPress={() => setLightboxIndex(index)}
-            onLongPress={() => {
-              if (item.userId === myId) return;
-              showReportBlockSheet({
-                onReport: async (reason) => {
-                  try {
-                    await api.report({ contentType: 'message', contentId: item.messageId, reason });
-                    setItems((prev) => prev.filter((m) => m.messageId !== item.messageId));
-                    Alert.alert('Reported', 'Thanks. You will not see this.');
-                  } catch (e) {
-                    Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
-                  }
-                },
-                onBlock: () =>
-                  confirmBlock(item.username, async () => {
-                    try {
-                      await api.blockUser(item.userId);
-                      setItems((prev) => prev.filter((m) => m.userId !== item.userId));
-                    } catch (e) {
-                      Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
-                    }
-                  }),
-              });
-            }}
+            onLongPress={() => onTileSafety(item)}
             delayLongPress={350}
           >
             {item.mediaType === 'video' ? (
@@ -140,7 +147,12 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
       <MediaLightbox
         items={lightboxIndex == null ? null : lightboxItems}
         index={lightboxIndex ?? 0}
+        myId={myId}
         onClose={() => setLightboxIndex(null)}
+        onSafety={(target) => {
+          const tile = items.find((item) => item.messageId === target.messageId && item.url === target.url);
+          if (tile) onTileSafety(tile);
+        }}
       />
     </>
   );

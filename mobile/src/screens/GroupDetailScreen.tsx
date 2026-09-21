@@ -1,4 +1,4 @@
-import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -29,10 +29,10 @@ import { api } from '../lib/api';
 import { confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { assertCleanText } from '../lib/wordFilter';
 import { useAuth } from '../context/AuthContext';
-import { chatMediaOf, type ChatMedia, type ChatMessage, type Group } from '../types';
+import { chatMediaOf, type ChatMedia, type ChatMessage, type Group, type GroupMember } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, spacing } from '../theme';
-import { MediaLightbox } from '../components/MediaLightbox';
+import { MediaLightbox, type LightboxItem } from '../components/MediaLightbox';
 
 export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'GroupDetail'>) {
   const { groupId, groupName } = route.params;
@@ -47,7 +47,10 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
   const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [lightbox, setLightbox] = useState<{ items: ChatMedia[]; index: number } | null>(null);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; index: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const lastOffsetY = useRef(0);
   const nearBottomRef = useRef(true);
@@ -97,6 +100,54 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
     setMenuOpen(false);
     setInviteOpen(true);
   }, []);
+
+  const openMembers = useCallback(() => {
+    setMenuOpen(false);
+    setMembersOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (!membersOpen) return;
+    let cancelled = false;
+    setMembersLoading(true);
+    api
+      .getGroupMembers(groupId)
+      .then(({ members: next }) => {
+        if (!cancelled) setMembers(next);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          Alert.alert('Could not load members', e instanceof Error ? e.message : 'Unknown error');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setMembersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [membersOpen, groupId]);
+
+  const removeMember = (person: GroupMember) => {
+    Alert.alert(`Remove ${person.username}?`, 'They will lose this group and its chat.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api.removeGroupMember(groupId, person.userId);
+            setMembers((prev) => prev.filter((m) => m.userId !== person.userId));
+            setGroup((current) =>
+              current ? { ...current, memberCount: Math.max(0, current.memberCount - 1) } : current,
+            );
+          } catch (e) {
+            Alert.alert('Could not remove', e instanceof Error ? e.message : 'Unknown error');
+          }
+        },
+      },
+    ]);
+  };
 
   const leaveGroup = useCallback(() => {
     setMenuOpen(false);
@@ -253,6 +304,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         try {
           await api.report({ contentType: 'message', contentId: item.id, reason });
           setMessages((prev) => prev.filter((m) => m.id !== item.id));
+          setLightbox(null);
           Alert.alert('Reported', 'Thanks. You will not see this message.');
         } catch (e) {
           Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
@@ -262,7 +314,8 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         confirmBlock(item.username, async () => {
           try {
             await api.blockUser(item.userId);
-            setMessages((prev) => prev.filter((m) => m.userId !== item.userId));
+                      setMessages((prev) => prev.filter((m) => m.userId !== item.userId));
+                      setLightbox(null);
           } catch (e) {
             Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
           }
@@ -279,7 +332,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
       <FlatList
         ref={listRef}
         style={styles.chat}
-        contentContainerStyle={styles.chatContent}
+        contentContainerStyle={[styles.chatContent, loading ? styles.chatLoading : null]}
         data={messages}
         keyExtractor={(m) => m.id}
         onContentSizeChange={() => {
@@ -323,7 +376,18 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                 </View>
               )}
               <View style={[styles.cluster, mine ? styles.clusterMine : null]}>
-                {!mine && firstInBurst ? <Text style={styles.sender}>{item.username}</Text> : null}
+                {!mine && firstInBurst ? (
+                  <View style={styles.senderRow}>
+                    <Text style={styles.sender}>{item.username}</Text>
+                    <Pressable
+                      onPress={() => onMessageSafety(item)}
+                      hitSlop={8}
+                      accessibilityLabel="Report or block"
+                    >
+                      <Ionicons name="flag-outline" size={12} color={colors.textMuted} />
+                    </Pressable>
+                  </View>
+                ) : null}
                 <Pressable
                   onLongPress={mine ? undefined : () => onMessageSafety(item)}
                   delayLongPress={350}
@@ -332,17 +396,65 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                     media={media}
                     mine={mine}
                     first={firstInBurst}
-                    last={lastInBurst && !item.body}
+                    last={lastInBurst && !item.body && !item.spot}
                     sending={item.status === 'sending'}
-                    onOpen={(opened) => setLightbox({ items: media, index: opened })}
+                    onOpen={(opened) =>
+                      setLightbox({
+                        items: media.map((entry) => ({
+                          ...entry,
+                          messageId: item.id,
+                          userId: item.userId,
+                          username: item.username,
+                        })),
+                        index: opened,
+                      })
+                    }
                   />
+                  {item.spot ? (
+                    <Pressable
+                      onPress={() =>
+                        navigation.navigate('SpotDetail', {
+                          spotId: item.spot!.id,
+                          spotName: item.spot!.name,
+                        })
+                      }
+                      style={[
+                        styles.spotCard,
+                        mine ? styles.spotCardMine : null,
+                        cornerStyle(mine, media.length === 0 && firstInBurst, lastInBurst && !item.body),
+                        media.length > 0 ? styles.bubbleAfterPhoto : null,
+                      ]}
+                    >
+                      <Ionicons
+                        name="location-outline"
+                        size={18}
+                        color={mine ? colors.onPrimary : colors.primary}
+                      />
+                      <View style={styles.spotCardMeta}>
+                        <Text
+                          style={[styles.spotCardName, mine ? styles.spotCardNameMine : null]}
+                          numberOfLines={2}
+                        >
+                          {item.spot.name}
+                        </Text>
+                        {item.spot.address ? (
+                          <Text
+                            style={[styles.spotCardAddress, mine ? styles.spotCardAddressMine : null]}
+                            numberOfLines={2}
+                          >
+                            {item.spot.address}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </Pressable>
+                  ) : null}
                   {item.body ? (
                     <View
                       style={[
                         styles.bubble,
                         mine ? styles.bubbleMine : styles.bubbleTheirs,
-                        cornerStyle(mine, !media.length && firstInBurst, lastInBurst),
-                        media.length > 0 ? styles.bubbleAfterPhoto : null,
+                        cornerStyle(mine, !media.length && !item.spot && firstInBurst, lastInBurst),
+                        media.length > 0 || item.spot ? styles.bubbleAfterPhoto : null,
                       ]}
                     >
                       <Text style={[styles.body, mine ? styles.bodyMine : null]}>{item.body}</Text>
@@ -370,6 +482,10 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
               <Ionicons name="images-outline" size={18} color={colors.text} />
               <Text style={styles.menuLabel}>Media</Text>
             </Pressable>
+            <Pressable onPress={openMembers} style={styles.menuItem} accessibilityLabel="Members">
+              <Ionicons name="people-outline" size={18} color={colors.text} />
+              <Text style={styles.menuLabel}>Members</Text>
+            </Pressable>
             <Pressable onPress={openInvite} style={styles.menuItem} accessibilityLabel="Invite">
               <Ionicons name="person-add-outline" size={18} color={colors.text} />
               <Text style={styles.menuLabel}>Invite</Text>
@@ -379,6 +495,54 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
               <Ionicons name="exit-outline" size={18} color={colors.danger} />
               <Text style={styles.menuLabelDanger}>Leave</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={membersOpen} transparent animationType="fade" onRequestClose={() => setMembersOpen(false)}>
+        <View style={styles.inviteBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setMembersOpen(false)} />
+          <View style={styles.inviteCard}>
+            <Text style={styles.inviteTitle}>Members</Text>
+            {membersLoading ? (
+              <View style={styles.membersLoading}>
+                <ActivityIndicator color={colors.primary} />
+              </View>
+            ) : (
+              <ScrollView style={styles.membersList} bounces={false}>
+                {members.map((person) => {
+                  const mine = person.userId === myId;
+                  const canRemove = group?.myRole === 'owner' && !mine && person.role !== 'owner';
+                  return (
+                    <View key={person.userId} style={styles.memberRow}>
+                      <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>
+                          {person.username.slice(0, 1).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.memberMeta}>
+                        <Text style={styles.memberName} numberOfLines={1}>
+                          {person.username}
+                          {mine ? ' (you)' : ''}
+                        </Text>
+                        {person.role === 'owner' ? (
+                          <Text style={styles.memberRole}>Owner</Text>
+                        ) : null}
+                      </View>
+                      {canRemove ? (
+                        <Pressable
+                          onPress={() => removeMember(person)}
+                          hitSlop={8}
+                          accessibilityLabel={`Remove ${person.username}`}
+                        >
+                          <Text style={styles.memberRemove}>Remove</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -413,7 +577,12 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
       <MediaLightbox
         items={lightbox?.items ?? null}
         index={lightbox?.index ?? 0}
+        myId={myId}
         onClose={() => setLightbox(null)}
+        onSafety={(target) => {
+          const msg = messages.find((m) => m.id === target.messageId);
+          if (msg) onMessageSafety(msg);
+        }}
       />
 
       <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
@@ -661,6 +830,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.md,
   },
+  chatLoading: {
+    justifyContent: 'center',
+  },
   empty: {
     color: colors.textMuted,
     fontSize: 14,
@@ -670,7 +842,7 @@ const styles = StyleSheet.create({
   },
   loading: {
     alignItems: 'center',
-    paddingVertical: spacing.xl,
+    justifyContent: 'center',
   },
   row: {
     alignItems: 'flex-end',
@@ -710,11 +882,16 @@ const styles = StyleSheet.create({
   clusterMine: {
     alignItems: 'flex-end',
   },
+  senderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 4,
+    marginLeft: 2,
+  },
   sender: {
     color: colors.textMuted,
     fontSize: 11,
-    marginBottom: 4,
-    marginLeft: 12,
   },
   photo: {
     backgroundColor: colors.surface,
@@ -797,6 +974,40 @@ const styles = StyleSheet.create({
   },
   bubbleAfterPhoto: {
     marginTop: 6,
+  },
+  spotCard: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceLight,
+    flexDirection: 'row',
+    gap: 10,
+    overflow: 'hidden',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    width: ALBUM_SIZE,
+  },
+  spotCardMine: {
+    backgroundColor: colors.primary,
+  },
+  spotCardMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  spotCardName: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  spotCardNameMine: {
+    color: colors.onPrimary,
+  },
+  spotCardAddress: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  spotCardAddressMine: {
+    color: colors.onPrimary,
+    opacity: 0.75,
   },
   body: {
     color: colors.text,
@@ -931,6 +1142,38 @@ const styles = StyleSheet.create({
     color: colors.onPrimary,
     fontSize: 16,
     fontWeight: '700',
+  },
+  membersLoading: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  membersList: {
+    maxHeight: 320,
+  },
+  memberRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 10,
+  },
+  memberMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  memberName: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  memberRole: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  memberRemove: {
+    color: colors.danger,
+    fontSize: 14,
+    fontWeight: '600',
   },
   menu: {
     position: 'absolute',

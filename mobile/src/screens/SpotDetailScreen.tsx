@@ -12,12 +12,14 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
 import { confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
 import { EmptyState } from '../components/ui';
+import { SendSpotSheet } from '../components/SendSpotSheet';
 import type { Group, SpotDetail, SpotMedia } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, radius, spacing } from '../theme';
@@ -33,6 +35,8 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
   const [groups, setGroups] = useState<Group[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sending, setSending] = useState(false);
   const [mediaIndex, setMediaIndex] = useState(0);
   const sharingRef = useRef(false);
 
@@ -125,6 +129,20 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
   }
 
   const isMine = session?.user.id === spot.createdBy;
+
+  const sendToGroups = async (groupIds: string[], body: string) => {
+    if (sending || groupIds.length === 0) return;
+    setSending(true);
+    try {
+      const { groupIds: next } = await api.sendSpot(spotId, { groupIds, body: body || undefined });
+      setSpot((current) => (current ? { ...current, groupIds: next } : current));
+      setSendOpen(false);
+    } catch (e) {
+      Alert.alert('Could not send', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const toggleShare = async (groupId: string) => {
     if (!isMine || sharingRef.current) return;
@@ -228,32 +246,53 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
         </View>
       ) : null}
 
-      {isMine ? (
+      <View style={styles.actions}>
         <Pressable
-          onPress={confirmDelete}
-          disabled={deleting}
+          onPress={() => setSendOpen(true)}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel="Delete spot"
-          style={styles.deleteWrap}
+          accessibilityLabel="Send"
+          style={styles.sendWrap}
         >
-          {deleting ? (
-            <ActivityIndicator color={colors.textMuted} size="small" />
-          ) : (
-            <Text style={styles.deleteText}>Delete spot</Text>
-          )}
+          <Text style={styles.sendText}>Send</Text>
+          <Ionicons name="paper-plane-outline" size={16} color={colors.primary} />
         </Pressable>
-      ) : (
-        <Pressable
-          onPress={onSpotSafety}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="Report or block"
-          style={styles.deleteWrap}
-        >
-          <Text style={styles.deleteText}>Report or block</Text>
-        </Pressable>
-      )}
+        {isMine ? (
+          <Pressable
+            onPress={confirmDelete}
+            disabled={deleting}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Delete spot"
+            style={styles.deleteWrap}
+          >
+            {deleting ? (
+              <ActivityIndicator color={colors.textMuted} size="small" />
+            ) : (
+              <Text style={styles.deleteText}>Delete spot</Text>
+            )}
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={onSpotSafety}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Report or block"
+            style={styles.deleteWrap}
+          >
+            <Text style={styles.deleteText}>Report or block</Text>
+          </Pressable>
+        )}
+      </View>
+      <SendSpotSheet
+        visible={sendOpen}
+        groups={groups}
+        sending={sending}
+        onClose={() => {
+          if (!sending) setSendOpen(false);
+        }}
+        onSend={(groupIds, body) => void sendToGroups(groupIds, body)}
+      />
     </ScrollView>
   );
 }
@@ -363,9 +402,23 @@ const styles = StyleSheet.create({
   groupChipTextActive: {
     color: colors.onPrimary,
   },
-  deleteWrap: {
-    alignSelf: 'center',
+  actions: {
+    alignItems: 'center',
+    gap: spacing.sm,
     marginTop: spacing.lg,
+  },
+  sendWrap: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: spacing.sm,
+  },
+  sendText: {
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  deleteWrap: {
     paddingVertical: spacing.sm,
   },
   deleteText: {

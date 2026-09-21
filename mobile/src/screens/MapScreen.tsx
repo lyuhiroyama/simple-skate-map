@@ -252,8 +252,8 @@ export function MapScreen() {
       <View style={styles.hint} pointerEvents="none">
         <Text style={styles.hintText}>
           {Platform.OS === 'web'
-            ? 'Right-click the map (or tap +) to pin a place you admire'
-            : 'Long-press the map to pin a place you admire'}
+            ? 'Right-click the map (or tap +) to pin a spot'
+            : 'Long-press the map to pin a spot'}
         </Text>
       </View>
     </View>
@@ -388,9 +388,11 @@ const styles = StyleSheet.create({
     lineHeight: 36,
   },
   hint: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     bottom: spacing.md,
     left: 0,
+    paddingLeft: spacing.md,
+    paddingRight: 92,
     position: 'absolute',
     right: 0,
   },

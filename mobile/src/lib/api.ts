@@ -64,6 +64,9 @@ const liveApi = {
   getGroupMembers: (groupId: string) =>
     request<{ members: GroupMember[] }>(`/groups/${groupId}/members`),
 
+  removeGroupMember: (groupId: string, userId: string) =>
+    request<void>(`/groups/${groupId}/members/${userId}`, { method: 'DELETE' }),
+
   leaveGroup: (groupId: string) =>
     request<void>(`/groups/${groupId}/membership`, { method: 'DELETE' }),
 
@@ -143,6 +146,12 @@ const liveApi = {
     request<{ spot: { id: string; groupIds: string[] } }>(`/spots/${spotId}`, {
       method: 'PATCH',
       body: JSON.stringify({ groupIds }),
+    }),
+
+  sendSpot: (spotId: string, input: { groupIds: string[]; body?: string }) =>
+    request<{ ok: true; groupIds: string[] }>(`/spots/${spotId}/send`, {
+      method: 'POST',
+      body: JSON.stringify(input),
     }),
 
   registerSpotMedia: (spotId: string, mediaType: 'photo' | 'video', fileExtension: string) =>

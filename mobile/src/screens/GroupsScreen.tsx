@@ -257,7 +257,9 @@ export function GroupsScreen() {
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setUsernameOpen(false)} />
         <View style={styles.dialog}>
           <Text style={styles.dialogTitle}>Username</Text>
-          <Text style={styles.dialogBody}>This is what people in your groups will see.</Text>
+          <Text style={styles.dialogBody}>
+            This is what people in your groups will see. You can change it once a day.
+          </Text>
           <Field
             value={usernameDraft}
             onChangeText={setUsernameDraft}

@@ -91,7 +91,14 @@ export function RootNavigator() {
           <Stack.Screen
             name="SpotDetail"
             component={SpotDetailScreen}
-            options={({ route }) => ({ title: route.params.spotName })}
+            options={({ route, navigation }) => {
+              const routes = navigation.getState().routes;
+              const prev = routes[routes.length - 2];
+              return {
+                title: route.params.spotName,
+                headerBackTitle: prev?.name === 'GroupDetail' ? undefined : 'Map',
+              };
+            }}
           />
           <Stack.Screen
             name="AddSpot"

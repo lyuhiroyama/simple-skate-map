@@ -48,6 +48,28 @@ app.patch('/me', requireAuth, async (req, res) => {
   }
   const username = parsed.data;
 
+  const { data: current, error: currentError } = await supabaseAdmin
+    .from('profiles')
+    .select('id, username, created_at, username_changed_at')
+    .eq('id', req.userId)
+    .single();
+  if (currentError) throw currentError;
+
+  if (current.username === username) {
+    res.json({
+      profile: { id: current.id, username: current.username, createdAt: current.created_at },
+    });
+    return;
+  }
+
+  if (current.username_changed_at) {
+    const elapsed = Date.now() - new Date(current.username_changed_at).getTime();
+    if (elapsed < 24 * 60 * 60 * 1000) {
+      res.status(429).json({ error: 'You can change your username once a day.' });
+      return;
+    }
+  }
+
   const { data: taken, error: takenError } = await supabaseAdmin
     .from('profiles')
     .select('id')
@@ -62,7 +84,7 @@ app.patch('/me', requireAuth, async (req, res) => {
 
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .update({ username })
+    .update({ username, username_changed_at: new Date().toISOString() })
     .eq('id', req.userId)
     .select('id, username, created_at')
     .single();

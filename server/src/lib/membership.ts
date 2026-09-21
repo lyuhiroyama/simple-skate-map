@@ -1,14 +1,22 @@
 import { supabaseAdmin } from '../supabase.js';
 
 export async function isGroupMember(userId: string, groupId: string): Promise<boolean> {
+  return (await groupRole(userId, groupId)) != null;
+}
+
+export async function groupRole(
+  userId: string,
+  groupId: string,
+): Promise<'owner' | 'member' | null> {
   const { data, error } = await supabaseAdmin
     .from('group_members')
-    .select('group_id')
+    .select('role')
     .eq('group_id', groupId)
     .eq('user_id', userId)
     .maybeSingle();
   if (error) throw error;
-  return data !== null;
+  if (data?.role === 'owner' || data?.role === 'member') return data.role;
+  return null;
 }
 
 export async function memberGroupIds(userId: string): Promise<string[]> {

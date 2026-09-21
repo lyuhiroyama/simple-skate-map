@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { CHAT_MEDIA_BUCKET, supabaseAdmin } from '../supabase.js';
-import { isGroupMember, memberGroupIds } from '../lib/membership.js';
+import { groupRole, isGroupMember, memberGroupIds } from '../lib/membership.js';
 import { blockedUserIds, hiddenContentIds } from '../lib/moderation.js';
 import { assertCleanText } from '../lib/wordFilter.js';
 
@@ -142,6 +142,19 @@ groupsRouter.get('/:groupId/members', async (req, res) => {
 
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
+function parseSpot(value: unknown) {
+  if (!value || typeof value !== 'object') return undefined;
+  const o = value as Record<string, unknown>;
+  if (typeof o.id !== 'string' || typeof o.name !== 'string') return undefined;
+  return {
+    id: o.id,
+    name: o.name,
+    address: typeof o.address === 'string' ? o.address : '',
+    latitude: typeof o.latitude === 'number' ? o.latitude : 0,
+    longitude: typeof o.longitude === 'number' ? o.longitude : 0,
+  };
+}
+
 function mapMessage(
   row: {
     id: string;
@@ -149,6 +162,7 @@ function mapMessage(
     user_id: string;
     body: string;
     created_at: string;
+    spot?: unknown;
   },
   username: string,
   media: { url: string; mediaType: 'photo' | 'video' }[] = [],
@@ -162,6 +176,7 @@ function mapMessage(
     createdAt: row.created_at,
     media,
     imageUrl: media[0]?.url,
+    spot: parseSpot(row.spot),
   };
 }
 
@@ -195,7 +210,7 @@ groupsRouter.get('/:groupId/messages', async (req, res) => {
 
   const { data, error } = await supabaseAdmin
     .from('messages')
-    .select('id, group_id, user_id, body, storage_path, media, created_at, profiles(username)')
+    .select('id, group_id, user_id, body, storage_path, media, spot, created_at, profiles(username)')
     .eq('group_id', req.params.groupId)
     .order('created_at', { ascending: true });
   if (error) throw error;
@@ -319,6 +334,39 @@ groupsRouter.post('/:groupId/messages', async (req, res) => {
     uploads,
     upload: uploads[0],
   });
+});
+
+/** Owner removes a member. */
+groupsRouter.delete('/:groupId/members/:userId', async (req, res) => {
+  const { groupId, userId } = req.params;
+  if (userId === req.userId) {
+    res.status(400).json({ error: 'Leave the group instead' });
+    return;
+  }
+
+  const role = await groupRole(req.userId, groupId);
+  if (role !== 'owner') {
+    res.status(403).json({ error: 'Only the group owner can remove people' });
+    return;
+  }
+
+  const targetRole = await groupRole(userId, groupId);
+  if (!targetRole) {
+    res.status(404).json({ error: 'That person is not in this group' });
+    return;
+  }
+  if (targetRole === 'owner') {
+    res.status(400).json({ error: 'You cannot remove the owner' });
+    return;
+  }
+
+  const { error } = await supabaseAdmin
+    .from('group_members')
+    .delete()
+    .eq('group_id', groupId)
+    .eq('user_id', userId);
+  if (error) throw error;
+  res.status(204).end();
 });
 
 /** Leave a group. */

@@ -37,6 +37,14 @@ export interface ChatMedia {
   mediaType: 'photo' | 'video';
 }
 
+export interface ChatSpot {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
 export interface ChatMessage {
   id: string;
   groupId: string;
@@ -46,6 +54,7 @@ export interface ChatMessage {
   createdAt: string;
   media?: ChatMedia[];
   imageUrl?: string;
+  spot?: ChatSpot;
   status?: 'sending' | 'sent' | 'failed';
 }
 

@@ -107,6 +107,7 @@ let messagesByGroup: Record<string, ChatMessage[]> = {
   ],
 };
 let previewUsername = 'you';
+let previewUsernameChangedAt: string | null = null;
 let blockedUsers: BlockedUser[] = [];
 let hiddenMessages: string[] = [];
 let hiddenSpots: string[] = [];
@@ -132,6 +133,7 @@ async function persist() {
       spots,
       messagesByGroup,
       previewUsername,
+      previewUsernameChangedAt,
       blockedUsers,
       hiddenMessages,
       hiddenSpots,
@@ -162,6 +164,7 @@ export async function initPreview() {
       spots?: SpotDetail[];
       messagesByGroup?: Record<string, ChatMessage[]>;
       previewUsername?: string;
+      previewUsernameChangedAt?: string | null;
       blockedUsers?: BlockedUser[];
       hiddenMessages?: string[];
       hiddenSpots?: string[];
@@ -180,6 +183,9 @@ export async function initPreview() {
     }
     if (parsed.messagesByGroup) messagesByGroup = parsed.messagesByGroup;
     if (parsed.previewUsername) previewUsername = parsed.previewUsername;
+    if (parsed.previewUsernameChangedAt !== undefined) {
+      previewUsernameChangedAt = parsed.previewUsernameChangedAt;
+    }
     if (parsed.blockedUsers) blockedUsers = parsed.blockedUsers;
     if (parsed.hiddenMessages) hiddenMessages = parsed.hiddenMessages;
     if (parsed.hiddenSpots) hiddenSpots = parsed.hiddenSpots;
@@ -227,6 +233,20 @@ export const previewApi = {
   getGroupMembers: async (groupId: string) => ({
     members: membersByGroup[groupId] ?? [],
   }),
+
+  removeGroupMember: async (groupId: string, userId: string) => {
+    const mine = membersByGroup[groupId] ?? [];
+    const me = mine.find((m) => m.userId === USER_ID);
+    if (me?.role !== 'owner') throw new Error('Only the group owner can remove people');
+    if (userId === USER_ID) throw new Error('Leave the group instead');
+    const target = mine.find((m) => m.userId === userId);
+    if (!target) throw new Error('That person is not in this group');
+    if (target.role === 'owner') throw new Error('You cannot remove the owner');
+    membersByGroup[groupId] = mine.filter((m) => m.userId !== userId);
+    const group = groups.find((g) => g.id === groupId);
+    if (group) group.memberCount = membersByGroup[groupId].length;
+    await persist();
+  },
 
   leaveGroup: async (groupId: string) => {
     const index = groups.findIndex((g) => g.id === groupId);
@@ -333,6 +353,40 @@ export const previewApi = {
     return { spot: { id: spot.id, groupIds: spot.groupIds } };
   },
 
+  sendSpot: async (spotId: string, input: { groupIds: string[]; body?: string }) => {
+    const spot = spots.find((s) => s.id === spotId);
+    if (!spot) throw new Error('Spot not found');
+    const groupIds = [...new Set(input.groupIds)];
+    if (groupIds.length === 0) throw new Error('Pick at least one group');
+    const body = input.body?.trim() ?? '';
+    if (body) assertCleanText(body, 'Message');
+    if (spot.createdBy === USER_ID) {
+      spot.groupIds = [...new Set([...(spot.groupIds ?? []), ...groupIds])];
+    }
+    const snapshot = {
+      id: spot.id,
+      name: spot.name,
+      address: spot.address,
+      latitude: spot.latitude,
+      longitude: spot.longitude,
+    };
+    const createdAt = new Date().toISOString();
+    for (const groupId of groupIds) {
+      const message: ChatMessage = {
+        id: `msg-${Date.now()}-${groupId}`,
+        groupId,
+        userId: USER_ID,
+        username: previewUsername,
+        body,
+        createdAt,
+        spot: snapshot,
+      };
+      messagesByGroup[groupId] = [...(messagesByGroup[groupId] ?? []), message];
+    }
+    await persist();
+    return { ok: true as const, groupIds: spot.groupIds ?? [] };
+  },
+
   registerSpotMedia: async (): Promise<PendingUpload> => {
     throw new Error('Media uploads are disabled in this web preview');
   },
@@ -390,7 +444,19 @@ export const previewApi = {
     if (next.length < 2 || next.length > 32 || !/^[a-zA-Z0-9_]+$/.test(next)) {
       throw new Error('Use 2–32 letters, numbers, and underscores');
     }
+    if (next === previewUsername) {
+      return {
+        profile: { id: USER_ID, username: next, createdAt: '2026-06-01T00:00:00.000Z' },
+      };
+    }
+    if (previewUsernameChangedAt) {
+      const elapsed = Date.now() - new Date(previewUsernameChangedAt).getTime();
+      if (elapsed < 24 * 60 * 60 * 1000) {
+        throw new Error('You can change your username once a day.');
+      }
+    }
     previewUsername = next;
+    previewUsernameChangedAt = new Date().toISOString();
     for (const members of Object.values(membersByGroup)) {
       for (const member of members) {
         if (member.userId === USER_ID) member.username = next;

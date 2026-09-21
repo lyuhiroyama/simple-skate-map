@@ -107,14 +107,16 @@ export const MapView = forwardRef(function MapView(
 
     const map = L.map(containerRef.current, {
       zoomControl: true,
-      attributionControl: true,
+      attributionControl: false,
     }).setView(
       [initialRegion?.latitude ?? 0, initialRegion?.longitude ?? 0],
       zoomFromDelta(initialRegion?.latitudeDelta),
     );
 
+    L.control.attribution({ prefix: false, position: 'bottomleft' }).addTo(map);
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap',
+      attribution: '© OpenStreetMap',
       maxZoom: 19,
     }).addTo(map);
 

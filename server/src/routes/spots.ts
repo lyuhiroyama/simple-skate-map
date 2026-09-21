@@ -212,6 +212,77 @@ spotsRouter.get('/:spotId', async (req, res) => {
   });
 });
 
+const sendSpotSchema = z.object({
+  groupIds: z.array(z.string().min(1)).min(1).max(50),
+  body: z.string().trim().max(2000).optional(),
+});
+
+/** Send this pin into one or more group chats. Creator also shares it with those groups. */
+spotsRouter.post('/:spotId/send', async (req, res) => {
+  const parsed = sendSpotSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Pick at least one group' });
+    return;
+  }
+
+  const body = parsed.data.body ?? '';
+  if (body) assertCleanText(body, 'Message');
+
+  const { data: spot, error } = await supabaseAdmin
+    .from('spots')
+    .select('id, created_by, name, address, latitude, longitude, spot_shares(group_id)')
+    .eq('id', req.params.spotId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!spot || !(await canAccessSpot(req.userId, spot.id))) {
+    res.status(404).json({ error: 'Spot not found' });
+    return;
+  }
+
+  const groupIds = [...new Set(parsed.data.groupIds)];
+  for (const groupId of groupIds) {
+    if (!(await isGroupMember(req.userId, groupId))) {
+      res.status(403).json({ error: 'You are not a member of one of those groups' });
+      return;
+    }
+  }
+
+  const snapshot = {
+    id: spot.id,
+    name: spot.name,
+    address: spot.address ?? '',
+    latitude: spot.latitude,
+    longitude: spot.longitude,
+  };
+
+  if (spot.created_by === req.userId) {
+    const existing = new Set(groupIdsFrom(spot.spot_shares));
+    const missing = groupIds.filter((id) => !existing.has(id));
+    if (missing.length > 0) {
+      const { error: shareError } = await supabaseAdmin.from('spot_shares').insert(
+        missing.map((groupId) => ({ spot_id: spot.id, group_id: groupId })),
+      );
+      if (shareError) throw shareError;
+    }
+  }
+
+  for (const groupId of groupIds) {
+    const { error: messageError } = await supabaseAdmin.from('messages').insert({
+      group_id: groupId,
+      user_id: req.userId,
+      body,
+      spot: snapshot,
+    });
+    if (messageError) throw messageError;
+  }
+
+  const nextShares =
+    spot.created_by === req.userId
+      ? [...new Set([...groupIdsFrom(spot.spot_shares), ...groupIds])]
+      : groupIdsFrom(spot.spot_shares);
+  res.json({ ok: true, groupIds: nextShares });
+});
+
 const shareSpotSchema = z.object({
   groupIds: z.array(z.string().uuid()).max(50),
 });
