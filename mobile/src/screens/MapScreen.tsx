@@ -53,6 +53,7 @@ export function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const [spots, setSpots] = useState<SpotPin[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [loadingPins, setLoadingPins] = useState(true);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [initialRegion, setInitialRegion] = useState<Region | null>(null);
@@ -104,6 +105,8 @@ export function MapScreen() {
       setGroups(groupsRes.groups);
     } catch (e) {
       Alert.alert('Could not load spots', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setLoadingPins(false);
     }
   }, []);
 
@@ -210,7 +213,16 @@ export function MapScreen() {
         ))}
       </MapView>
 
-      {groups.length > 0 ? (
+      {loadingPins ? (
+        <View style={styles.chips} pointerEvents="none">
+          <View style={styles.chipsContent}>
+            <View style={styles.loadingChip}>
+              <ActivityIndicator color={colors.primary} size="small" />
+              <Text style={styles.loadingChipText}>Loading spots</Text>
+            </View>
+          </View>
+        </View>
+      ) : groups.length > 0 ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -316,8 +328,25 @@ const styles = StyleSheet.create({
     top: spacing.md,
   },
   chipsContent: {
+    flexDirection: 'row',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
+  },
+  loadingChip: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  loadingChipText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
   },
   chip: {
     backgroundColor: colors.surface,

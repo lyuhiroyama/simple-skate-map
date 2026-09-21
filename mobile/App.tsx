@@ -7,12 +7,14 @@ import { AuthProvider } from './src/context/AuthContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { isDemo } from './src/config';
 import { initPreview } from './src/lib/preview';
+import { wakeApi } from './src/lib/api';
 import { colors, spacing } from './src/theme';
 
 export default function App() {
   const [ready, setReady] = useState(!isDemo);
 
   useEffect(() => {
+    wakeApi();
     if (!isDemo) return;
     initPreview().finally(() => setReady(true));
   }, []);

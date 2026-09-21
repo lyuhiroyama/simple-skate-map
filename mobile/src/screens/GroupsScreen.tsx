@@ -148,6 +148,10 @@ export function GroupsScreen() {
             value={newGroupName}
             onChangeText={setNewGroupName}
             placeholder="e.g. Tokyo Locals"
+            returnKeyType="go"
+            enablesReturnKeyAutomatically
+            keyboardAppearance="light"
+            onSubmitEditing={() => void createGroup()}
           />
           <Button title="Create group" onPress={createGroup} loading={busy} />
           <Field
@@ -156,6 +160,10 @@ export function GroupsScreen() {
             onChangeText={setInviteCode}
             autoCapitalize="none"
             placeholder="Paste code"
+            returnKeyType="go"
+            enablesReturnKeyAutomatically
+            keyboardAppearance="light"
+            onSubmitEditing={() => void joinGroup()}
           />
           <Button title="Join group" variant="secondary" onPress={joinGroup} loading={busy} />
           <View style={styles.sectionTitleRow}>
@@ -267,6 +275,10 @@ export function GroupsScreen() {
             autoCorrect={false}
             placeholder="e.g. lyu"
             maxLength={32}
+            returnKeyType="go"
+            enablesReturnKeyAutomatically
+            keyboardAppearance="light"
+            onSubmitEditing={() => void saveUsername()}
           />
           <Button title="Save" onPress={saveUsername} loading={savingUsername} />
           <Button title="Cancel" variant="secondary" onPress={() => setUsernameOpen(false)} />

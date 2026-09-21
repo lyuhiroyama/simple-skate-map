@@ -59,6 +59,7 @@ export function Field(props: TextInputProps & { label?: string }) {
       {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
       <TextInput
         placeholderTextColor={colors.textMuted}
+        keyboardAppearance="light"
         style={[styles.input, style]}
         {...rest}
       />

@@ -201,3 +201,9 @@ const liveApi = {
 };
 
 export const api = isDemo ? previewApi : liveApi;
+
+/** Wake a sleeping API instance before the first signed-in request. */
+export function wakeApi() {
+  if (isDemo) return;
+  void fetch(`${config.apiUrl}/health`).catch(() => undefined);
+}
