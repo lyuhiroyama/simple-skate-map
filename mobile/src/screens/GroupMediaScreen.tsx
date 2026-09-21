@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
+import { hapticClick } from '../lib/haptics';
 import { confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
 import { chatMediaOf } from '../types';
@@ -133,8 +134,11 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
           <Pressable
             style={styles.tile}
             onPress={() => setLightboxIndex(index)}
-            onLongPress={() => onTileSafety(item)}
-            delayLongPress={350}
+            onLongPress={() => {
+              hapticClick();
+              onTileSafety(item);
+            }}
+            delayLongPress={400}
           >
             {item.mediaType === 'video' ? (
               <VideoThumb url={item.url} />

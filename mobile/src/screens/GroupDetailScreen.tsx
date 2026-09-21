@@ -21,18 +21,22 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../lib/api';
-import { confirmBlock, showReportBlockSheet } from '../lib/safety';
+import { hapticClick } from '../lib/haptics';
+import { toggleReaction } from '../lib/reactions';
+import { confirmBlock, showReasonSheet } from '../lib/safety';
 import { assertCleanText } from '../lib/wordFilter';
 import { useAuth } from '../context/AuthContext';
 import { chatMediaOf, type ChatMedia, type ChatMessage, type Group, type GroupMember } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, spacing } from '../theme';
 import { MediaLightbox, type LightboxItem } from '../components/MediaLightbox';
+import { MessageActionsSheet } from '../components/MessageActionsSheet';
 
 export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'GroupDetail'>) {
   const { groupId, groupName } = route.params;
@@ -51,6 +55,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; index: number } | null>(null);
+  const [actionsFor, setActionsFor] = useState<ChatMessage | null>(null);
   const [loading, setLoading] = useState(true);
   const lastOffsetY = useRef(0);
   const nearBottomRef = useRef(true);
@@ -297,30 +302,49 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
 
   const myId = session?.user.id;
 
-  const onMessageSafety = (item: ChatMessage) => {
-    if (item.userId === myId || item.status === 'sending' || item.status === 'failed') return;
-    showReportBlockSheet({
-      onReport: async (reason) => {
-        try {
-          await api.report({ contentType: 'message', contentId: item.id, reason });
-          setMessages((prev) => prev.filter((m) => m.id !== item.id));
-          setLightbox(null);
-          Alert.alert('Reported', 'Thanks. You will not see this message.');
-        } catch (e) {
-          Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
-        }
-      },
-      onBlock: () =>
-        confirmBlock(item.username, async () => {
-          try {
-            await api.blockUser(item.userId);
-                      setMessages((prev) => prev.filter((m) => m.userId !== item.userId));
-                      setLightbox(null);
-          } catch (e) {
-            Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
-          }
-        }),
+  const openMessageActions = (item: ChatMessage) => {
+    if (item.status === 'sending' || item.status === 'failed') return;
+    hapticClick();
+    setActionsFor(item);
+  };
+
+  const reportMessage = (item: ChatMessage) => {
+    showReasonSheet(async (reason) => {
+      try {
+        await api.report({ contentType: 'message', contentId: item.id, reason });
+        setMessages((prev) => prev.filter((m) => m.id !== item.id));
+        setLightbox(null);
+        Alert.alert('Reported', 'Thanks. You will not see this message.');
+      } catch (e) {
+        Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
+      }
     });
+  };
+
+  const blockSender = (item: ChatMessage) => {
+    confirmBlock(item.username, async () => {
+      try {
+        await api.blockUser(item.userId);
+        setMessages((prev) => prev.filter((m) => m.userId !== item.userId));
+        setLightbox(null);
+      } catch (e) {
+        Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
+      }
+    });
+  };
+
+  const reactTo = async (item: ChatMessage, emoji: string) => {
+    const previous = item.reactions;
+    setMessages((prev) =>
+      prev.map((m) => (m.id === item.id ? { ...m, reactions: toggleReaction(m.reactions, emoji) } : m)),
+    );
+    try {
+      const { reactions } = await api.reactToMessage(groupId, item.id, emoji);
+      setMessages((prev) => prev.map((m) => (m.id === item.id ? { ...m, reactions } : m)));
+    } catch (e) {
+      setMessages((prev) => prev.map((m) => (m.id === item.id ? { ...m, reactions: previous } : m)));
+      Alert.alert('Could not react', e instanceof Error ? e.message : 'Unknown error');
+    }
   };
 
   return (
@@ -380,7 +404,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                   <View style={styles.senderRow}>
                     <Text style={styles.sender}>{item.username}</Text>
                     <Pressable
-                      onPress={() => onMessageSafety(item)}
+                      onPress={() => openMessageActions(item)}
                       hitSlop={8}
                       accessibilityLabel="Report or block"
                     >
@@ -389,8 +413,8 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                   </View>
                 ) : null}
                 <Pressable
-                  onLongPress={mine ? undefined : () => onMessageSafety(item)}
-                  delayLongPress={350}
+                  onLongPress={() => openMessageActions(item)}
+                  delayLongPress={400}
                 >
                   <ChatMediaBlock
                     media={media}
@@ -398,6 +422,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                     first={firstInBurst}
                     last={lastInBurst && !item.body && !item.spot}
                     sending={item.status === 'sending'}
+                    onLongPress={() => openMessageActions(item)}
                     onOpen={(opened) =>
                       setLightbox({
                         items: media.map((entry) => ({
@@ -418,18 +443,41 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                           spotName: item.spot!.name,
                         })
                       }
+                      onLongPress={() => openMessageActions(item)}
+                      delayLongPress={400}
                       style={[
                         styles.spotCard,
                         mine ? styles.spotCardMine : null,
+                        item.spot.media ? styles.spotCardWithMedia : null,
                         cornerStyle(mine, media.length === 0 && firstInBurst, lastInBurst && !item.body),
                         media.length > 0 ? styles.bubbleAfterPhoto : null,
                       ]}
                     >
-                      <Ionicons
-                        name="location-outline"
-                        size={18}
-                        color={mine ? colors.onPrimary : colors.primary}
-                      />
+                      {item.spot.media ? (
+                        <View style={styles.spotPreview}>
+                          <View pointerEvents="none" style={styles.spotPreviewFill}>
+                            {item.spot.media.mediaType === 'video' ? (
+                              <ChatVideo url={item.spot.media.url} style={styles.spotPreviewFill} />
+                            ) : (
+                              <Image
+                                source={{ uri: item.spot.media.url }}
+                                style={styles.spotPreviewFill}
+                              />
+                            )}
+                          </View>
+                          {item.spot.media.mediaType === 'video' ? (
+                            <View style={styles.playBadge} pointerEvents="none">
+                              <Ionicons name="play" size={22} color="#fff" />
+                            </View>
+                          ) : null}
+                        </View>
+                      ) : (
+                        <Ionicons
+                          name="location-outline"
+                          size={18}
+                          color={mine ? colors.onPrimary : colors.primary}
+                        />
+                      )}
                       <View style={styles.spotCardMeta}>
                         <Text
                           style={[styles.spotCardName, mine ? styles.spotCardNameMine : null]}
@@ -461,6 +509,22 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                     </View>
                   ) : null}
                 </Pressable>
+                {(item.reactions ?? []).length > 0 ? (
+                  <View style={[styles.reactionRow, mine ? styles.reactionRowMine : null]}>
+                    {(item.reactions ?? []).map((reaction) => (
+                      <Pressable
+                        key={reaction.emoji}
+                        onPress={() => void reactTo(item, reaction.emoji)}
+                        style={[styles.reactionPill, reaction.me ? styles.reactionPillMine : null]}
+                      >
+                        <Text style={styles.reactionText}>
+                          {reaction.emoji}
+                          {reaction.count > 1 ? ` ${reaction.count}` : ''}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
               </View>
               {mine ? (
                 lastInBurst || item.status === 'sending' || item.status === 'failed' ? (
@@ -581,7 +645,38 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         onClose={() => setLightbox(null)}
         onSafety={(target) => {
           const msg = messages.find((m) => m.id === target.messageId);
-          if (msg) onMessageSafety(msg);
+          if (msg) {
+            hapticClick();
+            setLightbox(null);
+            setActionsFor(msg);
+          }
+        }}
+      />
+      <MessageActionsSheet
+        visible={actionsFor != null}
+        mine={actionsFor?.userId === myId}
+        canCopy={Boolean(actionsFor?.body)}
+        myEmoji={actionsFor?.reactions?.find((r) => r.me)?.emoji}
+        onClose={() => setActionsFor(null)}
+        onReact={(emoji) => {
+          if (!actionsFor) return;
+          const target = actionsFor;
+          setActionsFor(null);
+          void reactTo(target, emoji);
+        }}
+        onCopy={() => {
+          if (actionsFor?.body) void Clipboard.setStringAsync(actionsFor.body);
+          setActionsFor(null);
+        }}
+        onReport={() => {
+          const target = actionsFor;
+          setActionsFor(null);
+          if (target) reportMessage(target);
+        }}
+        onBlock={() => {
+          const target = actionsFor;
+          setActionsFor(null);
+          if (target) blockSender(target);
         }}
       />
 
@@ -711,6 +806,7 @@ function ChatMediaBlock({
   last,
   sending,
   onOpen,
+  onLongPress,
 }: {
   media: ChatMedia[];
   mine: boolean;
@@ -718,6 +814,7 @@ function ChatMediaBlock({
   last: boolean;
   sending: boolean;
   onOpen: (index: number) => void;
+  onLongPress?: () => void;
 }) {
   if (media.length === 0) return null;
   const sendingStyle = sending ? styles.photoSending : null;
@@ -726,6 +823,8 @@ function ChatMediaBlock({
     return (
       <Pressable
         onPress={() => onOpen(0)}
+        onLongPress={onLongPress}
+        delayLongPress={400}
         style={[styles.album, cornerStyle(mine, first, last), sendingStyle]}
       >
         {item.mediaType === 'video' ? (
@@ -759,6 +858,7 @@ function ChatMediaBlock({
               width={wide ? ALBUM_SIZE : ALBUM_HALF}
               height={ALBUM_HALF}
               onPress={() => onOpen(index)}
+              onLongPress={onLongPress}
             />
           );
         })}
@@ -773,15 +873,17 @@ function ChatAlbumTile({
   width,
   height,
   onPress,
+  onLongPress,
 }: {
   item: ChatMedia;
   extra: number;
   width: number;
   height: number;
   onPress: () => void;
+  onLongPress?: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={{ height, width }}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={400} style={{ height, width }}>
       <View pointerEvents="none" style={styles.albumFill}>
         {item.mediaType === 'video' ? (
           <ChatVideo url={item.url} style={styles.albumFill} />
@@ -881,6 +983,28 @@ const styles = StyleSheet.create({
   },
   clusterMine: {
     alignItems: 'flex-end',
+  },
+  reactionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 4,
+  },
+  reactionRowMine: {
+    justifyContent: 'flex-end',
+  },
+  reactionPill: {
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 12,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  reactionPillMine: {
+    backgroundColor: colors.border,
+  },
+  reactionText: {
+    color: colors.text,
+    fontSize: 13,
   },
   senderRow: {
     alignItems: 'center',
@@ -985,12 +1109,30 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     width: ALBUM_SIZE,
   },
+  spotCardWithMedia: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+    gap: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
   spotCardMine: {
     backgroundColor: colors.primary,
+  },
+  spotPreview: {
+    backgroundColor: colors.surface,
+    height: ALBUM_SIZE,
+    width: ALBUM_SIZE,
+  },
+  spotPreviewFill: {
+    height: '100%',
+    width: '100%',
   },
   spotCardMeta: {
     flex: 1,
     minWidth: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   spotCardName: {
     color: colors.text,

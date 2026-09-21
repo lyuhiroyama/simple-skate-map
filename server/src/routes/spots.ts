@@ -230,7 +230,9 @@ spotsRouter.post('/:spotId/send', async (req, res) => {
 
   const { data: spot, error } = await supabaseAdmin
     .from('spots')
-    .select('id, created_by, name, address, latitude, longitude, spot_shares(group_id)')
+    .select(
+      'id, created_by, name, address, latitude, longitude, spot_shares(group_id), spot_media(storage_path, media_type, created_at)',
+    )
     .eq('id', req.params.spotId)
     .maybeSingle();
   if (error) throw error;
@@ -247,12 +249,23 @@ spotsRouter.post('/:spotId/send', async (req, res) => {
     }
   }
 
+  const firstMedia = [...(spot.spot_media ?? [])].sort((a, b) =>
+    a.created_at.localeCompare(b.created_at),
+  )[0];
   const snapshot = {
     id: spot.id,
     name: spot.name,
     address: spot.address ?? '',
     latitude: spot.latitude,
     longitude: spot.longitude,
+    ...(firstMedia
+      ? {
+          media: {
+            storagePath: firstMedia.storage_path,
+            mediaType: firstMedia.media_type === 'video' ? 'video' : 'photo',
+          },
+        }
+      : {}),
   };
 
   if (spot.created_by === req.userId) {

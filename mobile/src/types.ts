@@ -43,6 +43,13 @@ export interface ChatSpot {
   address: string;
   latitude: number;
   longitude: number;
+  media?: ChatMedia;
+}
+
+export interface MessageReaction {
+  emoji: string;
+  count: number;
+  me: boolean;
 }
 
 export interface ChatMessage {
@@ -55,6 +62,7 @@ export interface ChatMessage {
   media?: ChatMedia[];
   imageUrl?: string;
   spot?: ChatSpot;
+  reactions?: MessageReaction[];
   status?: 'sending' | 'sent' | 'failed';
 }
 

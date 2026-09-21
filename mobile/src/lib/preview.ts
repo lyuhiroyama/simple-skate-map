@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import type { BlockedUser, ChatMessage, Group, GroupMember, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
+import type { BlockedUser, ChatMessage, Group, GroupMember, MessageReaction, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
 import { assertCleanText } from './wordFilter';
+import { toggleReaction } from './reactions';
 
 const USER_ID = 'preview-user';
 const STORE_KEY = 'mcu-demo-v3';
@@ -295,6 +296,16 @@ export const previewApi = {
     return { message };
   },
 
+  reactToMessage: async (groupId: string, messageId: string, emoji: string) => {
+    const list = messagesByGroup[groupId] ?? [];
+    const message = list.find((m) => m.id === messageId);
+    if (!message) throw new Error('Message not found');
+    const next = toggleReaction(message.reactions, emoji);
+    message.reactions = next;
+    await persist();
+    return { reactions: next };
+  },
+
   getSpots: async (groupId?: string) => {
     const blocked = new Set(blockedUsers.map((b) => b.userId));
     const hidden = new Set(hiddenSpots);
@@ -363,12 +374,14 @@ export const previewApi = {
     if (spot.createdBy === USER_ID) {
       spot.groupIds = [...new Set([...(spot.groupIds ?? []), ...groupIds])];
     }
+    const first = spot.media[0];
     const snapshot = {
       id: spot.id,
       name: spot.name,
       address: spot.address,
       latitude: spot.latitude,
       longitude: spot.longitude,
+      media: first ? { url: first.url, mediaType: first.mediaType } : undefined,
     };
     const createdAt = new Date().toISOString();
     for (const groupId of groupIds) {

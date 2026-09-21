@@ -2,7 +2,7 @@ import { config, isDemo } from '../config';
 import { previewApi } from './preview';
 import { supabase } from './supabase';
 import * as FileSystem from 'expo-file-system/legacy';
-import type { BlockedUser, ChatMessage, Group, GroupMember, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
+import type { BlockedUser, ChatMessage, Group, GroupMember, MessageReaction, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
 
 class ApiError extends Error {
   constructor(
@@ -72,6 +72,12 @@ const liveApi = {
 
   getMessages: (groupId: string) =>
     request<{ messages: ChatMessage[] }>(`/groups/${groupId}/messages`),
+
+  reactToMessage: (groupId: string, messageId: string, emoji: string) =>
+    request<{ reactions: MessageReaction[] }>(
+      `/groups/${groupId}/messages/${messageId}/reactions`,
+      { method: 'POST', body: JSON.stringify({ emoji }) },
+    ),
 
   sendMessage: async (
     groupId: string,

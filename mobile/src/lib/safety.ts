@@ -34,7 +34,7 @@ export function showReportBlockSheet(opts: { onReport: (reason: ReportReason) =>
   ]);
 }
 
-function showReasonSheet(onReport: (reason: ReportReason) => void) {
+export function showReasonSheet(onReport: (reason: ReportReason) => void) {
   if (Platform.OS === 'ios') {
     ActionSheetIOS.showActionSheetWithOptions(
       {
