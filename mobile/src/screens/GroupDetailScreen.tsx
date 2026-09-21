@@ -184,6 +184,17 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
           <Ionicons name="information-circle-outline" size={26} color={colors.primary} />
         </Pressable>
       ),
+      unstable_headerRightItems: () => [
+        {
+          type: 'button',
+          label: 'Info',
+          icon: { type: 'sfSymbol', name: 'info.circle' },
+          onPress: () => setMenuOpen((open) => !open),
+          hidesSharedBackground: true,
+          accessibilityLabel: 'Group options',
+          tintColor: colors.primary,
+        },
+      ],
     });
   }, [navigation]);
 
@@ -711,7 +722,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
               style={styles.cameraBtn}
               accessibilityLabel="Take photo or video"
             >
-              <Ionicons name="camera" size={20} color={colors.onPrimary} />
+              <Ionicons name="camera" size={21} color={colors.onPrimary} />
             </Pressable>
           ) : null}
           <View style={styles.inputWrap}>
@@ -736,7 +747,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                 style={styles.galleryBtn}
                 accessibilityLabel="Add photos or videos"
               >
-                <Ionicons name="image-outline" size={22} color={colors.textMuted} />
+                <Ionicons name="image-outline" size={23} color={colors.textMuted} />
               </Pressable>
             ) : null}
           </View>
@@ -1197,12 +1208,12 @@ const styles = StyleSheet.create({
   cameraBtn: {
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 19,
+    borderRadius: 20,
     flexShrink: 0,
-    height: 38,
+    height: 40,
     justifyContent: 'center',
-    marginBottom: 3,
-    width: 38,
+    marginBottom: 2,
+    width: 40,
   },
   inputWrap: {
     alignItems: 'flex-end',
@@ -1220,7 +1231,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     height: 44,
     justifyContent: 'center',
-    width: 40,
+    paddingRight: 6,
+    width: 42,
   },
   pendingStrip: {
     marginBottom: 8,

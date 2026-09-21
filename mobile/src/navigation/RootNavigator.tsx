@@ -3,7 +3,8 @@ import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { AddSpotScreen } from '../screens/AddSpotScreen';
 import { GroupDetailScreen } from '../screens/GroupDetailScreen';
@@ -75,6 +76,33 @@ function TabsNavigator() {
   );
 }
 
+function PinSheetHeader() {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.sheetHeader, { paddingTop: Math.max(insets.top, 10) }]}>
+      <View style={styles.sheetGrabber} accessibilityElementsHidden />
+      <Text style={styles.sheetTitle}>Pin a place</Text>
+    </View>
+  );
+}
+
+function iosPlainBackItems(goBack: () => void) {
+  return ({ canGoBack, tintColor }: { canGoBack?: boolean; tintColor?: string }) => {
+    if (!canGoBack) return [];
+    return [
+      {
+        type: 'button' as const,
+        label: 'Back',
+        icon: { type: 'sfSymbol' as const, name: 'chevron.backward' as const },
+        onPress: goBack,
+        hidesSharedBackground: true,
+        accessibilityLabel: 'Back',
+        tintColor: tintColor ?? colors.text,
+      },
+    ];
+  };
+}
+
 export function RootNavigator() {
   const { session, loading } = useAuth();
 
@@ -108,20 +136,29 @@ export function RootNavigator() {
           <Stack.Screen
             name="AddSpot"
             component={AddSpotScreen}
-            options={{ title: 'Pin a place', presentation: 'modal' }}
+            options={{
+              title: 'Pin a place',
+              presentation: 'modal',
+              header: () => <PinSheetHeader />,
+            }}
           />
           <Stack.Screen
             name="GroupDetail"
             component={GroupDetailScreen}
-            options={({ route }) => ({
+            options={({ route, navigation }) => ({
               title: route.params.groupName,
               headerBackButtonDisplayMode: 'minimal',
+              unstable_headerLeftItems: iosPlainBackItems(() => navigation.goBack()),
             })}
           />
           <Stack.Screen
             name="GroupMedia"
             component={GroupMediaScreen}
-            options={{ title: 'Media' }}
+            options={({ navigation }) => ({
+              title: 'Media',
+              headerBackButtonDisplayMode: 'minimal',
+              unstable_headerLeftItems: iosPlainBackItems(() => navigation.goBack()),
+            })}
           />
           <Stack.Screen
             name="Legal"
@@ -142,5 +179,25 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     flex: 1,
     justifyContent: 'center',
+  },
+  sheetHeader: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 12,
+  },
+  sheetGrabber: {
+    backgroundColor: colors.textMuted,
+    borderRadius: 3,
+    height: 5,
+    marginBottom: 10,
+    opacity: 0.55,
+    width: 36,
+  },
+  sheetTitle: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: '800',
   },
 });
