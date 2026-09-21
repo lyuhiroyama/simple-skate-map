@@ -6,6 +6,7 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  InputAccessoryView,
   Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -37,6 +38,8 @@ import type { RootStackScreenProps } from '../navigation/types';
 import { colors, spacing } from '../theme';
 import { MediaLightbox, type LightboxItem } from '../components/MediaLightbox';
 import { MessageActionsSheet } from '../components/MessageActionsSheet';
+
+const CHAT_ACCESSORY = 'simple-skate-map-chat';
 
 export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'GroupDetail'>) {
   const { groupId, groupName } = route.params;
@@ -729,6 +732,14 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
             placeholderTextColor={colors.textMuted}
             style={styles.input}
             multiline
+            returnKeyType="send"
+            enablesReturnKeyAutomatically
+            submitBehavior="submit"
+            keyboardAppearance="dark"
+            inputAccessoryViewID={Platform.OS === 'ios' ? CHAT_ACCESSORY : undefined}
+            onSubmitEditing={() => {
+              void send();
+            }}
           />
           <Pressable
             onPress={send}
@@ -743,6 +754,15 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
           </Pressable>
         </View>
       </View>
+      {Platform.OS === 'ios' ? (
+        <InputAccessoryView nativeID={CHAT_ACCESSORY} backgroundColor={colors.surface}>
+          <View style={styles.accessory}>
+            <Pressable onPress={() => Keyboard.dismiss()} hitSlop={8} accessibilityLabel="Done">
+              <Text style={styles.accessoryDone}>Done</Text>
+            </Pressable>
+          </View>
+        </InputAccessoryView>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -1171,6 +1191,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexShrink: 0,
     gap: 8,
+  },
+  accessory: {
+    alignItems: 'flex-end',
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+  },
+  accessoryDone: {
+    color: colors.primary,
+    fontSize: 17,
+    fontWeight: '600',
   },
   mediaBtn: {
     alignItems: 'center',

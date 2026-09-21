@@ -186,10 +186,15 @@ async function firstSpotMediaById(spotIds: string[]) {
   const { data, error } = await supabaseAdmin
     .from('spot_media')
     .select('spot_id, storage_path, media_type, created_at')
-    .in('spot_id', unique)
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  for (const row of data ?? []) {
+    .in('spot_id', unique);
+  if (error) {
+    console.error('firstSpotMediaById', error);
+    return map;
+  }
+  const rows = [...(data ?? [])].sort((a, b) =>
+    String(a.created_at).localeCompare(String(b.created_at)),
+  );
+  for (const row of rows) {
     if (map.has(row.spot_id)) continue;
     map.set(row.spot_id, {
       storagePath: row.storage_path,
@@ -309,21 +314,32 @@ groupsRouter.get('/:groupId/messages', async (req, res) => {
         'message_id',
         visible.map((row) => row.id),
       );
-    if (!reactionError) reactionRows = reactionData ?? [];
+    if (reactionError) {
+      console.error('message_reactions', reactionError);
+    } else {
+      reactionRows = reactionData ?? [];
+    }
   }
 
-  const messages = await Promise.all(
+  let messages;
+  try {
+    messages = await Promise.all(
     visible.map(async (row) => {
       const files = mediaFromRow(row);
-      const media = await Promise.all(
-        files.map(async (file) => {
-          const { data: signed, error: signError } = await supabaseAdmin.storage
-            .from(CHAT_MEDIA_BUCKET)
-            .createSignedUrl(file.storagePath, SIGNED_URL_TTL_SECONDS);
-          if (signError) throw signError;
-          return { url: signed.signedUrl, mediaType: file.mediaType };
-        }),
-      );
+      const media = (
+        await Promise.all(
+          files.map(async (file) => {
+            const { data: signed, error: signError } = await supabaseAdmin.storage
+              .from(CHAT_MEDIA_BUCKET)
+              .createSignedUrl(file.storagePath, SIGNED_URL_TTL_SECONDS);
+            if (signError || !signed?.signedUrl) {
+              console.error('chat media sign', signError);
+              return null;
+            }
+            return { url: signed.signedUrl, mediaType: file.mediaType };
+          }),
+        )
+      ).filter((item): item is { url: string; mediaType: 'photo' | 'video' } => item != null);
       const spot = parseSpot(row.spot);
       const preview =
         spot &&
@@ -339,7 +355,16 @@ groupsRouter.get('/:groupId/messages', async (req, res) => {
         summarizeReactions(reactionRows, row.id, req.userId),
       );
     }),
-  );
+    );
+  } catch (err) {
+    console.error('messages enrich', err);
+    messages = visible.map((row) =>
+      mapMessage(
+        row,
+        (row.profiles as unknown as { username: string } | null)?.username ?? 'unknown',
+      ),
+    );
+  }
 
   res.json({ messages });
 });
