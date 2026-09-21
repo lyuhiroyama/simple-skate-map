@@ -181,8 +181,21 @@ export function AddSpotScreen({ route, navigation }: RootStackScreenProps<'AddSp
           <Text style={styles.shareHint}>Just you. Share from the pin after you join a group.</Text>
         ) : (
           <>
-            <Text style={styles.shareHint}>Tap any groups to share. None selected = only you.</Text>
+            <Text style={styles.shareHint}>All is just you. Tap a group to share it there.</Text>
             <View style={styles.groupRow}>
+            <Pressable
+              onPress={() => setGroupIds([])}
+              style={[styles.groupChip, groupIds.length === 0 ? styles.groupChipActive : null]}
+            >
+              <Text
+                style={[
+                  styles.groupChipText,
+                  groupIds.length === 0 ? styles.groupChipTextActive : null,
+                ]}
+              >
+                All
+              </Text>
+            </Pressable>
             {groups.map((g) => {
               const on = groupIds.includes(g.id);
               return (

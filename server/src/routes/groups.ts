@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { CHAT_MEDIA_BUCKET, MEDIA_BUCKET, supabaseAdmin } from '../supabase.js';
 import { groupRole, isGroupMember, memberGroupIds } from '../lib/membership.js';
 import { blockedUserIds, hiddenContentIds } from '../lib/moderation.js';
+import { signPaths } from '../lib/signedUrls.js';
 import { assertCleanText } from '../lib/wordFilter.js';
 
 export const groupsRouter = Router();
@@ -171,14 +172,6 @@ function parseSpot(value: unknown): SpotSnapshot | undefined {
   };
 }
 
-async function signSpotMedia(storagePath: string): Promise<string | undefined> {
-  const { data, error } = await supabaseAdmin.storage
-    .from(MEDIA_BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
-  if (error || !data?.signedUrl) return undefined;
-  return data.signedUrl;
-}
-
 async function firstSpotMediaById(spotIds: string[]) {
   const unique = [...new Set(spotIds)];
   const map = new Map<string, { storagePath: string; mediaType: 'photo' | 'video' }>();
@@ -281,21 +274,28 @@ function mediaFromRow(row: { storage_path?: string | null; media?: unknown }): M
 
 /** List chat messages in one of my groups. */
 groupsRouter.get('/:groupId/messages', async (req, res) => {
-  if (!(await isGroupMember(req.userId, req.params.groupId))) {
+  const groupId = req.params.groupId;
+  const [member, messagesResult, blockedList, hiddenList] = await Promise.all([
+    isGroupMember(req.userId, groupId),
+    supabaseAdmin
+      .from('messages')
+      .select(
+        'id, group_id, user_id, body, storage_path, media, spot, created_at, profiles!messages_user_id_fkey(username)',
+      )
+      .eq('group_id', groupId)
+      .order('created_at', { ascending: true }),
+    blockedUserIds(req.userId),
+    hiddenContentIds(req.userId, 'message'),
+  ]);
+  if (!member) {
     res.status(403).json({ error: 'You are not a member of this group' });
     return;
   }
+  if (messagesResult.error) throw messagesResult.error;
 
-  const { data, error } = await supabaseAdmin
-    .from('messages')
-    .select('id, group_id, user_id, body, storage_path, media, spot, created_at, profiles!messages_user_id_fkey(username)')
-    .eq('group_id', req.params.groupId)
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-
-  const blocked = new Set(await blockedUserIds(req.userId));
-  const hidden = new Set(await hiddenContentIds(req.userId, 'message'));
-  const visible = (data ?? []).filter(
+  const blocked = new Set(blockedList);
+  const hidden = new Set(hiddenList);
+  const visible = (messagesResult.data ?? []).filter(
     (row) => !blocked.has(row.user_id) && !hidden.has(row.id),
   );
 
@@ -303,68 +303,54 @@ groupsRouter.get('/:groupId/messages', async (req, res) => {
     const spot = parseSpot(row.spot);
     return spot && !spot.mediaStoragePath ? [spot.id] : [];
   });
-  const fallbackSpotMedia = await firstSpotMediaById(spotsNeedingMedia);
+  const messageIds = visible.map((row) => row.id);
+  const [fallbackSpotMedia, reactionResult] = await Promise.all([
+    firstSpotMediaById(spotsNeedingMedia),
+    messageIds.length > 0
+      ? supabaseAdmin.from('message_reactions').select('message_id, user_id, emoji').in('message_id', messageIds)
+      : Promise.resolve({ data: [] as { message_id: string; user_id: string; emoji: string }[], error: null }),
+  ]);
+  if (reactionResult.error) console.error('message_reactions', reactionResult.error);
+  const reactionRows = reactionResult.data ?? [];
 
-  let reactionRows: { message_id: string; user_id: string; emoji: string }[] = [];
-  if (visible.length > 0) {
-    const { data: reactionData, error: reactionError } = await supabaseAdmin
-      .from('message_reactions')
-      .select('message_id, user_id, emoji')
-      .in(
-        'message_id',
-        visible.map((row) => row.id),
-      );
-    if (reactionError) {
-      console.error('message_reactions', reactionError);
-    } else {
-      reactionRows = reactionData ?? [];
-    }
-  }
+  const prepared = visible.map((row) => {
+    const files = mediaFromRow(row);
+    const spot = parseSpot(row.spot);
+    const preview =
+      spot &&
+      (spot.mediaStoragePath
+        ? { storagePath: spot.mediaStoragePath, mediaType: spot.mediaType ?? 'photo' }
+        : fallbackSpotMedia.get(spot.id));
+    return { row, files, preview };
+  });
+  const chatPaths = prepared.flatMap((item) => item.files.map((file) => file.storagePath));
+  const spotPaths = prepared.flatMap((item) => (item.preview ? [item.preview.storagePath] : []));
 
-  let messages;
+  let chatSigned = new Map<string, string>();
+  let spotSigned = new Map<string, string>();
   try {
-    messages = await Promise.all(
-    visible.map(async (row) => {
-      const files = mediaFromRow(row);
-      const media = (
-        await Promise.all(
-          files.map(async (file) => {
-            const { data: signed, error: signError } = await supabaseAdmin.storage
-              .from(CHAT_MEDIA_BUCKET)
-              .createSignedUrl(file.storagePath, SIGNED_URL_TTL_SECONDS);
-            if (signError || !signed?.signedUrl) {
-              console.error('chat media sign', signError);
-              return null;
-            }
-            return { url: signed.signedUrl, mediaType: file.mediaType };
-          }),
-        )
-      ).filter((item): item is { url: string; mediaType: 'photo' | 'video' } => item != null);
-      const spot = parseSpot(row.spot);
-      const preview =
-        spot &&
-        (spot.mediaStoragePath
-          ? { storagePath: spot.mediaStoragePath, mediaType: spot.mediaType ?? 'photo' }
-          : fallbackSpotMedia.get(spot.id));
-      const spotUrl = preview ? await signSpotMedia(preview.storagePath) : undefined;
-      return mapMessage(
-        row,
-        (row.profiles as unknown as { username: string } | null)?.username ?? 'unknown',
-        media,
-        spotUrl && preview ? { url: spotUrl, mediaType: preview.mediaType } : undefined,
-        summarizeReactions(reactionRows, row.id, req.userId),
-      );
-    }),
-    );
+    [chatSigned, spotSigned] = await Promise.all([
+      signPaths(CHAT_MEDIA_BUCKET, chatPaths, SIGNED_URL_TTL_SECONDS),
+      signPaths(MEDIA_BUCKET, spotPaths, SIGNED_URL_TTL_SECONDS),
+    ]);
   } catch (err) {
-    console.error('messages enrich', err);
-    messages = visible.map((row) =>
-      mapMessage(
-        row,
-        (row.profiles as unknown as { username: string } | null)?.username ?? 'unknown',
-      ),
-    );
+    console.error('messages sign', err);
   }
+
+  const messages = prepared.map(({ row, files, preview }) => {
+    const media = files.flatMap((file) => {
+      const url = chatSigned.get(file.storagePath);
+      return url ? [{ url, mediaType: file.mediaType }] : [];
+    });
+    const spotUrl = preview ? spotSigned.get(preview.storagePath) : undefined;
+    return mapMessage(
+      row,
+      (row.profiles as unknown as { username: string } | null)?.username ?? 'unknown',
+      media,
+      spotUrl && preview ? { url: spotUrl, mediaType: preview.mediaType } : undefined,
+      summarizeReactions(reactionRows, row.id, req.userId),
+    );
+  });
 
   res.json({ messages });
 });

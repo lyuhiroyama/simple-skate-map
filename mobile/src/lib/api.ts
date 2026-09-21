@@ -2,6 +2,7 @@ import { config, isDemo } from '../config';
 import { previewApi } from './preview';
 import { supabase } from './supabase';
 import * as FileSystem from 'expo-file-system/legacy';
+import { AppState } from 'react-native';
 import type { BlockedUser, ChatMessage, Group, GroupMember, MessageReaction, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
 
 class ApiError extends Error {
@@ -46,20 +47,59 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-const liveApi = {
-  getGroups: () => request<{ groups: Group[] }>('/groups'),
+const CACHE_TTL_MS = 20_000;
+const cache = new Map<string, { at: number; value: unknown }>();
 
-  createGroup: (name: string) =>
-    request<{ group: Group }>('/groups', {
+function readCache<T>(key: string): T | undefined {
+  const hit = cache.get(key);
+  if (!hit || Date.now() - hit.at > CACHE_TTL_MS) return undefined;
+  return hit.value as T;
+}
+
+function writeCache<T>(key: string, value: T): T {
+  cache.set(key, { at: Date.now(), value });
+  return value;
+}
+
+function invalidateCache(...keys: string[]) {
+  if (keys.length === 0) {
+    cache.clear();
+    return;
+  }
+  for (const key of [...cache.keys()]) {
+    if (keys.some((k) => key === k || key.startsWith(`${k}:`))) cache.delete(key);
+  }
+}
+
+async function cachedRequest<T>(key: string, path: string, init?: RequestInit): Promise<T> {
+  if (!init?.method || init.method === 'GET') {
+    const hit = readCache<T>(key);
+    if (hit !== undefined) return hit;
+  }
+  const value = await request<T>(path, init);
+  return writeCache(key, value);
+}
+
+const liveApi = {
+  getGroups: () => cachedRequest<{ groups: Group[] }>('groups', '/groups'),
+
+  createGroup: async (name: string) => {
+    const result = await request<{ group: Group }>('/groups', {
       method: 'POST',
       body: JSON.stringify({ name }),
-    }),
+    });
+    invalidateCache('groups');
+    return result;
+  },
 
-  joinGroup: (inviteCode: string) =>
-    request<{ group: Pick<Group, 'id' | 'name' | 'inviteCode'> }>('/groups/join', {
+  joinGroup: async (inviteCode: string) => {
+    const result = await request<{ group: Pick<Group, 'id' | 'name' | 'inviteCode'> }>('/groups/join', {
       method: 'POST',
       body: JSON.stringify({ inviteCode }),
-    }),
+    });
+    invalidateCache('groups', 'spots');
+    return result;
+  },
 
   getGroupMembers: (groupId: string) =>
     request<{ members: GroupMember[] }>(`/groups/${groupId}/members`),
@@ -67,8 +107,11 @@ const liveApi = {
   removeGroupMember: (groupId: string, userId: string) =>
     request<void>(`/groups/${groupId}/members/${userId}`, { method: 'DELETE' }),
 
-  leaveGroup: (groupId: string) =>
-    request<void>(`/groups/${groupId}/membership`, { method: 'DELETE' }),
+  leaveGroup: async (groupId: string) => {
+    const result = await request<void>(`/groups/${groupId}/membership`, { method: 'DELETE' });
+    invalidateCache('groups', 'spots');
+    return result;
+  },
 
   getMessages: (groupId: string) =>
     request<{ messages: ChatMessage[] }>(`/groups/${groupId}/messages`),
@@ -131,34 +174,43 @@ const liveApi = {
   },
 
   getSpots: (groupId?: string) =>
-    request<{ spots: SpotPin[] }>(groupId ? `/spots?groupId=${groupId}` : '/spots'),
+    cachedRequest<{ spots: SpotPin[] }>(groupId ? `spots:${groupId}` : 'spots', groupId ? `/spots?groupId=${groupId}` : '/spots'),
 
   getSpot: (spotId: string) => request<{ spot: SpotDetail }>(`/spots/${spotId}`),
 
-  createSpot: (input: {
+  createSpot: async (input: {
     groupIds?: string[];
     name: string;
     description: string;
     address: string;
     latitude: number;
     longitude: number;
-  }) =>
-    request<{ spot: { id: string } }>('/spots', {
+  }) => {
+    const result = await request<{ spot: { id: string } }>('/spots', {
       method: 'POST',
       body: JSON.stringify(input),
-    }),
+    });
+    invalidateCache('spots');
+    return result;
+  },
 
-  updateSpotShares: (spotId: string, groupIds: string[]) =>
-    request<{ spot: { id: string; groupIds: string[] } }>(`/spots/${spotId}`, {
+  updateSpotShares: async (spotId: string, groupIds: string[]) => {
+    const result = await request<{ spot: { id: string; groupIds: string[] } }>(`/spots/${spotId}`, {
       method: 'PATCH',
       body: JSON.stringify({ groupIds }),
-    }),
+    });
+    invalidateCache('spots');
+    return result;
+  },
 
-  sendSpot: (spotId: string, input: { groupIds: string[]; body?: string }) =>
-    request<{ ok: true; groupIds: string[] }>(`/spots/${spotId}/send`, {
+  sendSpot: async (spotId: string, input: { groupIds: string[]; body?: string }) => {
+    const result = await request<{ ok: true; groupIds: string[] }>(`/spots/${spotId}/send`, {
       method: 'POST',
       body: JSON.stringify(input),
-    }),
+    });
+    invalidateCache('spots');
+    return result;
+  },
 
   registerSpotMedia: (spotId: string, mediaType: 'photo' | 'video', fileExtension: string) =>
     request<PendingUpload>(`/spots/${spotId}/media`, {
@@ -166,15 +218,22 @@ const liveApi = {
       body: JSON.stringify({ mediaType, fileExtension }),
     }),
 
-  deleteSpot: (spotId: string) => request<void>(`/spots/${spotId}`, { method: 'DELETE' }),
+  deleteSpot: async (spotId: string) => {
+    const result = await request<void>(`/spots/${spotId}`, { method: 'DELETE' });
+    invalidateCache('spots');
+    return result;
+  },
 
-  getMe: () => request<{ profile: Profile }>('/me'),
+  getMe: () => cachedRequest<{ profile: Profile }>('me', '/me'),
 
-  updateUsername: (username: string) =>
-    request<{ profile: Profile }>('/me', {
+  updateUsername: async (username: string) => {
+    const result = await request<{ profile: Profile }>('/me', {
       method: 'PATCH',
       body: JSON.stringify({ username }),
-    }),
+    });
+    invalidateCache('me');
+    return result;
+  },
 
   report: (input: {
     contentType: 'message' | 'spot' | 'user';
@@ -189,11 +248,14 @@ const liveApi = {
 
   getBlocks: () => request<{ blocks: BlockedUser[] }>('/blocks'),
 
-  blockUser: (userId: string) =>
-    request<{ block: { userId: string; username: string } }>('/blocks', {
+  blockUser: async (userId: string) => {
+    const result = await request<{ block: { userId: string; username: string } }>('/blocks', {
       method: 'POST',
       body: JSON.stringify({ userId }),
-    }),
+    });
+    invalidateCache();
+    return result;
+  },
 
   unblockUser: (userId: string) => request<void>(`/blocks/${userId}`, { method: 'DELETE' }),
 
@@ -206,4 +268,18 @@ export const api = isDemo ? previewApi : liveApi;
 export function wakeApi() {
   if (isDemo) return;
   void fetch(`${config.apiUrl}/health`).catch(() => undefined);
+}
+
+/** Keep the API from sleeping while the app is open. */
+export function startApiKeepAlive() {
+  if (isDemo) return () => undefined;
+  wakeApi();
+  const tick = setInterval(wakeApi, 4 * 60 * 1000);
+  const sub = AppState.addEventListener('change', (state) => {
+    if (state === 'active') wakeApi();
+  });
+  return () => {
+    clearInterval(tick);
+    sub.remove();
+  };
 }

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { MEDIA_BUCKET, supabaseAdmin } from '../supabase.js';
 import { canAccessSpot, isGroupMember, memberGroupIds } from '../lib/membership.js';
 import { blockedUserIds, hiddenContentIds } from '../lib/moderation.js';
+import { signPaths } from '../lib/signedUrls.js';
 import { assertCleanText } from '../lib/wordFilter.js';
 
 export const spotsRouter = Router();
@@ -42,10 +43,14 @@ function mapPin(s: {
  * ?groupId= limits to pins shared with that group.
  */
 spotsRouter.get('/', async (req, res) => {
-  const myGroups = await memberGroupIds(req.userId);
   const groupId = typeof req.query.groupId === 'string' ? req.query.groupId : undefined;
-  const blocked = new Set(await blockedUserIds(req.userId));
-  const hidden = new Set(await hiddenContentIds(req.userId, 'spot'));
+  const [myGroups, blockedList, hiddenList] = await Promise.all([
+    memberGroupIds(req.userId),
+    blockedUserIds(req.userId),
+    hiddenContentIds(req.userId, 'spot'),
+  ]);
+  const blocked = new Set(blockedList);
+  const hidden = new Set(hiddenList);
   const keep = (id: string, createdBy: string | undefined) =>
     !hidden.has(id) && (!createdBy || createdBy === req.userId || !blocked.has(createdBy));
 
@@ -70,32 +75,34 @@ spotsRouter.get('/', async (req, res) => {
     return;
   }
 
-  const { data: owned, error: ownedError } = await supabaseAdmin
-    .from('spots')
-    .select('id, name, address, latitude, longitude, created_at, created_by, spot_shares(group_id)')
-    .eq('created_by', req.userId)
-    .order('created_at', { ascending: false });
+  const [{ data: owned, error: ownedError }, sharedResult] = await Promise.all([
+    supabaseAdmin
+      .from('spots')
+      .select('id, name, address, latitude, longitude, created_at, created_by, spot_shares(group_id)')
+      .eq('created_by', req.userId)
+      .order('created_at', { ascending: false }),
+    myGroups.length > 0
+      ? supabaseAdmin
+          .from('spot_shares')
+          .select(
+            'spots!inner(id, name, address, latitude, longitude, created_at, created_by, spot_shares(group_id))',
+          )
+          .in('group_id', myGroups)
+      : Promise.resolve({ data: [] as { spots: unknown }[], error: null }),
+  ]);
   if (ownedError) throw ownedError;
+  if (sharedResult.error) throw sharedResult.error;
 
   const byId = new Map(
     (owned ?? []).filter((s) => keep(s.id, s.created_by)).map((s) => [s.id, mapPin(s)]),
   );
 
-  if (myGroups.length > 0) {
-    const { data: shared, error: sharedError } = await supabaseAdmin
-      .from('spot_shares')
-      .select(
-        'spots!inner(id, name, address, latitude, longitude, created_at, created_by, spot_shares(group_id))',
-      )
-      .in('group_id', myGroups);
-    if (sharedError) throw sharedError;
-    for (const row of shared ?? []) {
-      const raw = row.spots as unknown as Parameters<typeof mapPin>[0] | Parameters<typeof mapPin>[0][] | null;
-      const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
-      for (const spot of list) {
-        if (!keep(spot.id, spot.created_by)) continue;
-        if (!byId.has(spot.id)) byId.set(spot.id, mapPin(spot));
-      }
+  for (const row of sharedResult.data ?? []) {
+    const raw = row.spots as unknown as Parameters<typeof mapPin>[0] | Parameters<typeof mapPin>[0][] | null;
+    const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    for (const spot of list) {
+      if (!keep(spot.id, spot.created_by)) continue;
+      if (!byId.has(spot.id)) byId.set(spot.id, mapPin(spot));
     }
   }
 
@@ -155,44 +162,52 @@ spotsRouter.post('/', async (req, res) => {
 
 /** Full spot detail: description, creator, and signed media URLs. */
 spotsRouter.get('/:spotId', async (req, res) => {
-  const { data: spot, error } = await supabaseAdmin
-    .from('spots')
-    .select(
-      'id, created_by, name, description, address, latitude, longitude, created_at, profiles(username), spot_media(id, storage_path, media_type, created_at), spot_shares(group_id)',
-    )
-    .eq('id', req.params.spotId)
-    .maybeSingle();
+  const [{ data: spot, error }, myGroups, blocked, hidden] = await Promise.all([
+    supabaseAdmin
+      .from('spots')
+      .select(
+        'id, created_by, name, description, address, latitude, longitude, created_at, profiles(username), spot_media(id, storage_path, media_type, created_at), spot_shares(group_id)',
+      )
+      .eq('id', req.params.spotId)
+      .maybeSingle(),
+    memberGroupIds(req.userId),
+    blockedUserIds(req.userId),
+    hiddenContentIds(req.userId, 'spot'),
+  ]);
   if (error) throw error;
-  if (!spot || !(await canAccessSpot(req.userId, spot.id))) {
+  const shareIds = groupIdsFrom(spot?.spot_shares);
+  const canAccess =
+    !!spot && (spot.created_by === req.userId || shareIds.some((id) => myGroups.includes(id)));
+  if (!spot || !canAccess) {
     res.status(404).json({ error: 'Spot not found' });
     return;
   }
 
-  const blocked = await blockedUserIds(req.userId);
-  const hidden = await hiddenContentIds(req.userId, 'spot');
-  if (
-    hidden.includes(spot.id) ||
-    (spot.created_by !== req.userId && blocked.includes(spot.created_by))
-  ) {
+  if (hidden.includes(spot.id) || (spot.created_by !== req.userId && blocked.includes(spot.created_by))) {
     res.status(404).json({ error: 'Spot not found' });
     return;
   }
 
-  const mediaRows = spot.spot_media ?? [];
-  const media = await Promise.all(
-    mediaRows.map(async (m) => {
-      const { data: signed, error: signError } = await supabaseAdmin.storage
-        .from(MEDIA_BUCKET)
-        .createSignedUrl(m.storage_path, SIGNED_URL_TTL_SECONDS);
-      if (signError) throw signError;
-      return {
+  const mediaRows = [...(spot.spot_media ?? [])].sort((a, b) =>
+    String(a.created_at).localeCompare(String(b.created_at)),
+  );
+  const signed = await signPaths(
+    MEDIA_BUCKET,
+    mediaRows.map((m) => m.storage_path),
+    SIGNED_URL_TTL_SECONDS,
+  );
+  const media = mediaRows.flatMap((m) => {
+    const url = signed.get(m.storage_path);
+    if (!url) return [];
+    return [
+      {
         id: m.id,
         mediaType: m.media_type,
-        url: signed.signedUrl,
+        url,
         createdAt: m.created_at,
-      };
-    }),
-  );
+      },
+    ];
+  });
 
   res.json({
     spot: {

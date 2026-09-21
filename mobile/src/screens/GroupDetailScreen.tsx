@@ -711,7 +711,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
               style={styles.cameraBtn}
               accessibilityLabel="Take photo or video"
             >
-              <Ionicons name="camera" size={22} color={colors.onPrimary} />
+              <Ionicons name="camera" size={20} color={colors.onPrimary} />
             </Pressable>
           ) : null}
           <View style={styles.inputWrap}>
@@ -1197,11 +1197,12 @@ const styles = StyleSheet.create({
   cameraBtn: {
     alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 22,
+    borderRadius: 19,
     flexShrink: 0,
-    height: 44,
+    height: 38,
     justifyContent: 'center',
-    width: 44,
+    marginBottom: 3,
+    width: 38,
   },
   inputWrap: {
     alignItems: 'flex-end',
