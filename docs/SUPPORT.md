@@ -1,6 +1,6 @@
 # Support
 
-Email **lyuhiroyama@gmail.com** for help with Simple Skate Map.
+Email **beanface.studios@gmail.com** for help with Simple Skate Map.
 
 Use this address to:
 

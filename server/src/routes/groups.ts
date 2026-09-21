@@ -151,7 +151,7 @@ function mapMessage(
     created_at: string;
   },
   username: string,
-  imageUrl?: string,
+  media: { url: string; mediaType: 'photo' | 'video' }[] = [],
 ) {
   return {
     id: row.id,
@@ -160,8 +160,30 @@ function mapMessage(
     username,
     body: row.body,
     createdAt: row.created_at,
-    imageUrl,
+    media,
+    imageUrl: media[0]?.url,
   };
+}
+
+type MediaRow = { storagePath: string; mediaType: 'photo' | 'video' };
+
+function mediaFromRow(row: { storage_path?: string | null; media?: unknown }): MediaRow[] {
+  const raw = Array.isArray(row.media) ? row.media : [];
+  const fromJson = raw.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const path = (item as { storagePath?: unknown }).storagePath;
+    const mediaType = (item as { mediaType?: unknown }).mediaType;
+    if (typeof path !== 'string') return [];
+    return [
+      {
+        storagePath: path,
+        mediaType: mediaType === 'video' ? ('video' as const) : ('photo' as const),
+      },
+    ];
+  });
+  if (fromJson.length > 0) return fromJson;
+  if (row.storage_path) return [{ storagePath: row.storage_path, mediaType: 'photo' }];
+  return [];
 }
 
 /** List chat messages in one of my groups. */
@@ -173,7 +195,7 @@ groupsRouter.get('/:groupId/messages', async (req, res) => {
 
   const { data, error } = await supabaseAdmin
     .from('messages')
-    .select('id, group_id, user_id, body, storage_path, created_at, profiles(username)')
+    .select('id, group_id, user_id, body, storage_path, media, created_at, profiles(username)')
     .eq('group_id', req.params.groupId)
     .order('created_at', { ascending: true });
   if (error) throw error;
@@ -186,18 +208,20 @@ groupsRouter.get('/:groupId/messages', async (req, res) => {
 
   const messages = await Promise.all(
     visible.map(async (row) => {
-      let imageUrl: string | undefined;
-      if (row.storage_path) {
-        const { data: signed, error: signError } = await supabaseAdmin.storage
-          .from(CHAT_MEDIA_BUCKET)
-          .createSignedUrl(row.storage_path, SIGNED_URL_TTL_SECONDS);
-        if (signError) throw signError;
-        imageUrl = signed.signedUrl;
-      }
+      const files = mediaFromRow(row);
+      const media = await Promise.all(
+        files.map(async (file) => {
+          const { data: signed, error: signError } = await supabaseAdmin.storage
+            .from(CHAT_MEDIA_BUCKET)
+            .createSignedUrl(file.storagePath, SIGNED_URL_TTL_SECONDS);
+          if (signError) throw signError;
+          return { url: signed.signedUrl, mediaType: file.mediaType };
+        }),
+      );
       return mapMessage(
         row,
         (row.profiles as unknown as { username: string } | null)?.username ?? 'unknown',
-        imageUrl,
+        media,
       );
     }),
   );
@@ -212,9 +236,21 @@ const sendMessageSchema = z.object({
     .trim()
     .regex(/^[a-zA-Z0-9]{1,8}$/)
     .optional(),
+  attachments: z
+    .array(
+      z.object({
+        fileExtension: z
+          .string()
+          .trim()
+          .regex(/^[a-zA-Z0-9]{1,8}$/),
+        mediaType: z.enum(['photo', 'video']).default('photo'),
+      }),
+    )
+    .max(8)
+    .optional(),
 });
 
-/** Send a text and/or photo message. Photos return a signed upload URL. */
+/** Send text and/or a photo/video album. Attachments return signed upload URLs. */
 groupsRouter.post('/:groupId/messages', async (req, res) => {
   const parsed = sendMessageSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -223,7 +259,13 @@ groupsRouter.post('/:groupId/messages', async (req, res) => {
   }
 
   const body = parsed.data.body ?? '';
-  if (!body && !parsed.data.fileExtension) {
+  const attachments =
+    parsed.data.attachments && parsed.data.attachments.length > 0
+      ? parsed.data.attachments
+      : parsed.data.fileExtension
+        ? [{ fileExtension: parsed.data.fileExtension, mediaType: 'photo' as const }]
+        : [];
+  if (!body && attachments.length === 0) {
     res.status(400).json({ error: 'Message is empty' });
     return;
   }
@@ -241,19 +283,22 @@ groupsRouter.post('/:groupId/messages', async (req, res) => {
     .single();
   if (profileError) throw profileError;
 
-  let storagePath: string | undefined;
-  let uploadUrl: string | undefined;
-  let uploadToken: string | undefined;
+  const uploads: { uploadUrl: string; uploadToken: string; storagePath: string }[] = [];
+  const media: MediaRow[] = [];
 
-  if (parsed.data.fileExtension) {
+  for (const attachment of attachments) {
     const mediaId = randomUUID();
-    storagePath = `${req.params.groupId}/${mediaId}.${parsed.data.fileExtension.toLowerCase()}`;
+    const storagePath = `${req.params.groupId}/${mediaId}.${attachment.fileExtension.toLowerCase()}`;
     const { data: upload, error: uploadError } = await supabaseAdmin.storage
       .from(CHAT_MEDIA_BUCKET)
       .createSignedUploadUrl(storagePath);
     if (uploadError) throw uploadError;
-    uploadUrl = upload.signedUrl;
-    uploadToken = upload.token;
+    media.push({ storagePath, mediaType: attachment.mediaType });
+    uploads.push({
+      uploadUrl: upload.signedUrl,
+      uploadToken: upload.token,
+      storagePath,
+    });
   }
 
   const { data: message, error } = await supabaseAdmin
@@ -262,17 +307,17 @@ groupsRouter.post('/:groupId/messages', async (req, res) => {
       group_id: req.params.groupId,
       user_id: req.userId,
       body,
-      storage_path: storagePath ?? null,
+      storage_path: media[0]?.storagePath ?? null,
+      media,
     })
     .select('id, group_id, user_id, body, created_at')
     .single();
   if (error) throw error;
 
   res.status(201).json({
-    message: mapMessage(message, profile.username, undefined),
-    upload: uploadUrl
-      ? { uploadUrl, uploadToken, storagePath }
-      : undefined,
+    message: mapMessage(message, profile.username, []),
+    uploads,
+    upload: uploads[0],
   });
 });
 

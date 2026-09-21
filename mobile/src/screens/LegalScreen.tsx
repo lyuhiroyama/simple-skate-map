@@ -1,18 +1,10 @@
 import React, { useCallback, useState } from 'react';
-import {
-  Alert,
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui';
-import { PRIVACY_SECTIONS, SUPPORT_EMAIL, SUPPORT_MAILTO } from '../legal';
+import { PRIVACY_SECTIONS } from '../legal';
 import type { BlockedUser } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, spacing } from '../theme';
@@ -49,19 +41,6 @@ export function LegalScreen({}: RootStackScreenProps<'Legal'>) {
       void loadBlocks();
     }, [loadBlocks]),
   );
-
-  const openSupport = async () => {
-    try {
-      const can = await Linking.canOpenURL(SUPPORT_MAILTO);
-      if (!can) {
-        Alert.alert('Support', SUPPORT_EMAIL);
-        return;
-      }
-      await Linking.openURL(SUPPORT_MAILTO);
-    } catch {
-      Alert.alert('Support', SUPPORT_EMAIL);
-    }
-  };
 
   const unblock = (person: BlockedUser) => {
     Alert.alert(`Unblock ${person.username}?`, 'Their messages and spots can show up again.', [
@@ -121,12 +100,6 @@ export function LegalScreen({}: RootStackScreenProps<'Legal'>) {
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <Text style={styles.kicker}>Privacy</Text>
       <PrivacyCopy />
-
-      <Text style={styles.kicker}>Support</Text>
-      <Text style={styles.sectionBody}>
-        Email us to report a problem, ask a question, or request help removing content.
-      </Text>
-      <Button title={`Email ${SUPPORT_EMAIL}`} variant="secondary" onPress={() => void openSupport()} />
 
       <Text style={styles.kicker}>Blocked</Text>
       {blocks.length === 0 ? (

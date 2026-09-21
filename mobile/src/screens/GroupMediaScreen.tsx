@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Dimensions,
@@ -7,12 +7,15 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
 import { confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
-import type { ChatMessage } from '../types';
+import { chatMediaOf } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, spacing } from '../theme';
 
@@ -20,10 +23,19 @@ const GAP = 2;
 const COLS = 3;
 const TILE = Math.floor((Dimensions.get('window').width - GAP * (COLS - 1)) / COLS);
 
+type MediaTile = {
+  key: string;
+  messageId: string;
+  userId: string;
+  username: string;
+  url: string;
+  mediaType: 'photo' | 'video';
+};
+
 export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) {
   const { groupId } = route.params;
   const { session } = useAuth();
-  const [items, setItems] = useState<ChatMessage[]>([]);
+  const [items, setItems] = useState<MediaTile[]>([]);
   const myId = session?.user.id;
 
   useFocusEffect(
@@ -32,7 +44,19 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
       api
         .getMessages(groupId)
         .then(({ messages }) => {
-          if (!cancelled) setItems(messages.filter((m) => m.imageUrl));
+          if (cancelled) return;
+          setItems(
+            messages.flatMap((m) =>
+              chatMediaOf(m).map((media, index) => ({
+                key: `${m.id}-${index}`,
+                messageId: m.id,
+                userId: m.userId,
+                username: m.username,
+                url: media.url,
+                mediaType: media.mediaType,
+              })),
+            ),
+          );
         })
         .catch((e: unknown) => {
           if (!cancelled) {
@@ -45,13 +69,15 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
     }, [groupId]),
   );
 
+  const empty = useMemo(() => <Text style={styles.empty}>No photos or videos in this chat yet.</Text>, []);
+
   return (
     <FlatList
       style={styles.root}
       data={items}
       numColumns={COLS}
-      keyExtractor={(m) => m.id}
-      ListEmptyComponent={<Text style={styles.empty}>No photos in this chat yet.</Text>}
+      keyExtractor={(m) => m.key}
+      ListEmptyComponent={empty}
       renderItem={({ item }) => (
         <Pressable
           style={styles.tile}
@@ -60,9 +86,9 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
             showReportBlockSheet({
               onReport: async (reason) => {
                 try {
-                  await api.report({ contentType: 'message', contentId: item.id, reason });
-                  setItems((prev) => prev.filter((m) => m.id !== item.id));
-                  Alert.alert('Reported', 'Thanks. You will not see this photo.');
+                  await api.report({ contentType: 'message', contentId: item.messageId, reason });
+                  setItems((prev) => prev.filter((m) => m.messageId !== item.messageId));
+                  Alert.alert('Reported', 'Thanks. You will not see this.');
                 } catch (e) {
                   Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
                 }
@@ -80,10 +106,28 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
           }}
           delayLongPress={350}
         >
-          <Image source={{ uri: item.imageUrl }} style={styles.image} />
+          {item.mediaType === 'video' ? (
+            <VideoThumb url={item.url} />
+          ) : (
+            <Image source={{ uri: item.url }} style={styles.image} />
+          )}
         </Pressable>
       )}
     />
+  );
+}
+
+function VideoThumb({ url }: { url: string }) {
+  const player = useVideoPlayer(url, (p) => {
+    p.loop = false;
+  });
+  return (
+    <View style={styles.image}>
+      <VideoView player={player} style={styles.image} contentFit="cover" nativeControls={false} />
+      <View style={styles.playBadge} pointerEvents="none">
+        <Ionicons name="play" size={18} color="#fff" />
+      </View>
+    </View>
   );
 }
 
@@ -108,5 +152,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     height: '100%',
     width: '100%',
+  },
+  playBadge: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    bottom: 0,
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
   },
 });

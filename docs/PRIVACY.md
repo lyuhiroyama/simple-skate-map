@@ -3,7 +3,7 @@
 **Simple Skate Map** (“the app”) is for documenting street architecture and
 clips with people you invite. It is not a guidebook. Do not trespass.
 
-**Contact:** lyuhiroyama@gmail.com
+**Contact:** beanface.studios@gmail.com
 
 ## What we collect
 
@@ -47,4 +47,4 @@ collect information from them.
 
 ## Contact
 
-Questions, reports, or deletion requests: lyuhiroyama@gmail.com
+Questions, reports, or deletion requests: beanface.studios@gmail.com

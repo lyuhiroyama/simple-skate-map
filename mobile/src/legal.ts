@@ -1,6 +1,4 @@
-export const SUPPORT_EMAIL = 'lyuhiroyama@gmail.com';
-
-export const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Simple Skate Map support')}`;
+export const SUPPORT_EMAIL = 'beanface.studios@gmail.com';
 
 export const PRIVACY_SECTIONS: { title: string; body: string }[] = [
   {

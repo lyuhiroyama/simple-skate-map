@@ -46,7 +46,7 @@ export function SignInScreen() {
 
         <Text style={styles.hint}>No passwords. You stay signed in on this phone.</Text>
         <Text style={styles.disclaimer}>
-          For looking at spots and clips. Not a guidebook. Don't trespass.
+          For looking at spots and clips. Not a guidebook.{'\n'}Don't trespass.
         </Text>
         <Pressable onPress={() => setPrivacyOpen(true)} hitSlop={8} accessibilityRole="button">
           <Text style={styles.privacyLink}>Privacy</Text>

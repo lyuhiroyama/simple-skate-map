@@ -70,29 +70,53 @@ const liveApi = {
   getMessages: (groupId: string) =>
     request<{ messages: ChatMessage[] }>(`/groups/${groupId}/messages`),
 
-  sendMessage: async (groupId: string, input: { body?: string; imageUri?: string }) => {
-    const fromUri = input.imageUri?.split('.').pop();
-    const fileExtension =
-      fromUri && /^[a-z0-9]{1,8}$/i.test(fromUri) ? fromUri.toLowerCase() : input.imageUri ? 'jpg' : undefined;
+  sendMessage: async (
+    groupId: string,
+    input: { body?: string; assets?: { uri: string; mediaType: 'photo' | 'video'; mimeType?: string | null }[] },
+  ) => {
+    const assets = input.assets ?? [];
+    const attachments = assets.map((asset) => {
+      const fromUri = asset.uri.split('.').pop();
+      const fileExtension =
+        fromUri && /^[a-z0-9]{1,8}$/i.test(fromUri)
+          ? fromUri.toLowerCase()
+          : asset.mediaType === 'video'
+            ? 'mp4'
+            : 'jpg';
+      return { fileExtension, mediaType: asset.mediaType };
+    });
     const result = await request<{
       message: ChatMessage;
+      uploads?: { uploadUrl: string; uploadToken: string; storagePath: string }[];
       upload?: { uploadUrl: string; uploadToken: string; storagePath: string };
     }>(`/groups/${groupId}/messages`, {
       method: 'POST',
       body: JSON.stringify({
         body: input.body,
-        fileExtension: input.imageUri ? fileExtension : undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
       }),
     });
-    if (result.upload && input.imageUri) {
-      const uploaded = await FileSystem.uploadAsync(result.upload.uploadUrl, input.imageUri, {
+    const uploads = result.uploads ?? (result.upload ? [result.upload] : []);
+    const media: ChatMessage['media'] = [];
+    for (let i = 0; i < uploads.length; i += 1) {
+      const upload = uploads[i];
+      const asset = assets[i];
+      if (!upload || !asset) continue;
+      const uploaded = await FileSystem.uploadAsync(upload.uploadUrl, asset.uri, {
         httpMethod: 'PUT',
-        headers: { 'Content-Type': 'image/jpeg' },
+        headers: {
+          'Content-Type':
+            asset.mimeType ?? (asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg'),
+        },
       });
       if (uploaded.status < 200 || uploaded.status >= 300) {
         throw new ApiError(`Upload failed with status ${uploaded.status}`, uploaded.status);
       }
-      result.message.imageUrl = input.imageUri;
+      media.push({ url: asset.uri, mediaType: asset.mediaType });
+    }
+    if (media.length > 0) {
+      result.message.media = media;
+      result.message.imageUrl = media[0]?.url;
     }
     return { message: result.message };
   },

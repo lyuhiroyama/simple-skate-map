@@ -37,15 +37,24 @@ export async function deleteUserAccount(userId: string) {
 
   const { data: chatRows, error: chatError } = await supabaseAdmin
     .from('messages')
-    .select('storage_path')
-    .eq('user_id', userId)
-    .not('storage_path', 'is', null);
+    .select('storage_path, media')
+    .eq('user_id', userId);
   if (chatError) throw chatError;
-  const chatPaths = (chatRows ?? [])
-    .map((row) => row.storage_path)
-    .filter((path): path is string => Boolean(path));
-  if (chatPaths.length > 0) {
-    await supabaseAdmin.storage.from(CHAT_MEDIA_BUCKET).remove(chatPaths);
+  const chatPaths = [
+    ...(chatRows ?? []).flatMap((row) => {
+      const fromJson = Array.isArray(row.media)
+        ? row.media.flatMap((item) => {
+            if (!item || typeof item !== 'object') return [];
+            const path = (item as { storagePath?: unknown }).storagePath;
+            return typeof path === 'string' ? [path] : [];
+          })
+        : [];
+      return [...fromJson, ...(row.storage_path ? [row.storage_path] : [])];
+    }),
+  ];
+  const uniqueChatPaths = [...new Set(chatPaths)];
+  if (uniqueChatPaths.length > 0) {
+    await supabaseAdmin.storage.from(CHAT_MEDIA_BUCKET).remove(uniqueChatPaths);
   }
 
   const { data: ownedSpots, error: spotsError } = await supabaseAdmin

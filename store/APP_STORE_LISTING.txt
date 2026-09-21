@@ -2,7 +2,7 @@ Simple Skate Map — paste into App Store Connect
 ================================================
 Not submitted for you. Copy these into the listing.
 Privacy + Support URLs only work after the docs are
-on GitHub with the real support email (not personal Gmail).
+on GitHub. Support email: beanface.studios@gmail.com
 
 
 NAME

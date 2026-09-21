@@ -32,6 +32,11 @@ export interface SpotMedia {
   createdAt: string;
 }
 
+export interface ChatMedia {
+  url: string;
+  mediaType: 'photo' | 'video';
+}
+
 export interface ChatMessage {
   id: string;
   groupId: string;
@@ -39,8 +44,15 @@ export interface ChatMessage {
   username: string;
   body: string;
   createdAt: string;
+  media?: ChatMedia[];
   imageUrl?: string;
   status?: 'sending' | 'sent' | 'failed';
+}
+
+export function chatMediaOf(message: ChatMessage): ChatMedia[] {
+  if (message.media && message.media.length > 0) return message.media;
+  if (message.imageUrl) return [{ url: message.imageUrl, mediaType: 'photo' }];
+  return [];
 }
 
 export interface SpotDetail extends SpotPin {

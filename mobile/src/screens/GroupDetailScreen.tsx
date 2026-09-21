@@ -1,12 +1,10 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
-  ActionSheetIOS,
   Alert,
   FlatList,
   Image,
   Keyboard,
   KeyboardAvoidingView,
-  LayoutAnimation,
   Modal,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -18,16 +16,19 @@ import {
   Text,
   TextInput,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../lib/api';
 import { confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { assertCleanText } from '../lib/wordFilter';
 import { useAuth } from '../context/AuthContext';
-import type { ChatMessage, Group } from '../types';
+import { chatMediaOf, type ChatMedia, type ChatMessage, type Group } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, spacing } from '../theme';
 
@@ -40,11 +41,9 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [myUsername, setMyUsername] = useState('you');
   const [draft, setDraft] = useState('');
-  const [pendingPhotos, setPendingPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  const [pendingMedia, setPendingMedia] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [composerVisible, setComposerVisible] = useState(true);
-  const composerVisibleRef = useRef(true);
   const lastOffsetY = useRef(0);
   const nearBottomRef = useRef(true);
 
@@ -128,14 +127,6 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
     });
   }, [navigation]);
 
-  const setComposer = (visible: boolean) => {
-    if (composerVisibleRef.current === visible) return;
-    composerVisibleRef.current = visible;
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    if (!visible) Keyboard.dismiss();
-    setComposerVisible(visible);
-  };
-
   const onChatScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const y = contentOffset.y;
@@ -143,18 +134,13 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
     lastOffsetY.current = y;
     const distanceFromBottom = contentSize.height - layoutMeasurement.height - y;
     nearBottomRef.current = distanceFromBottom < 64;
-    if (nearBottomRef.current) {
-      setComposer(true);
-      return;
-    }
-    if (dy < -24) setComposer(false);
-    if (dy > 24) setComposer(true);
+    if (dy < -24) Keyboard.dismiss();
   };
 
   const send = async () => {
     const body = draft.trim();
-    const photos = [...pendingPhotos];
-    if ((!body && photos.length === 0) || sending) return;
+    const assets = [...pendingMedia];
+    if ((!body && assets.length === 0) || sending) return;
     const userId = session?.user.id;
     if (!userId) return;
 
@@ -167,113 +153,91 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
 
     setSending(true);
     setDraft('');
-    setPendingPhotos([]);
+    setPendingMedia([]);
 
     const username = myUsername.trim() || 'you';
-    const now = Date.now();
-    const outgoing: ChatMessage[] = [];
-    if (body) {
-      outgoing.push({
-        id: `local-${now}-text`,
-        groupId,
-        userId,
-        username,
-        body,
-        createdAt: new Date().toISOString(),
-        status: 'sending',
-      });
-    }
-    photos.forEach((photo, index) => {
-      outgoing.push({
-        id: `local-${now}-photo-${index}`,
-        groupId,
-        userId,
-        username,
-        body: '',
-        createdAt: new Date().toISOString(),
-        imageUrl: photo.uri,
-        status: 'sending',
-      });
-    });
+    const media = assets.map((asset) => ({
+      url: asset.uri,
+      mediaType: (asset.type === 'video' ? 'video' : 'photo') as ChatMedia['mediaType'],
+    }));
+    const local: ChatMessage = {
+      id: `local-${Date.now()}`,
+      groupId,
+      userId,
+      username,
+      body,
+      createdAt: new Date().toISOString(),
+      media,
+      imageUrl: media[0]?.url,
+      status: 'sending',
+    };
 
-    setMessages((prev) => [...prev, ...outgoing]);
+    setMessages((prev) => [...prev, local]);
     setSending(false);
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
 
-    for (const item of outgoing) {
-      try {
-        const { message } = await api.sendMessage(groupId, {
-          body: item.body || undefined,
-          imageUri: item.imageUrl,
-        });
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === item.id
-              ? {
-                  ...message,
-                  imageUrl: message.imageUrl ?? item.imageUrl,
-                  status: 'sent',
-                }
-              : m,
-          ),
-        );
-      } catch (e) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === item.id ? { ...m, status: 'failed' } : m)),
-        );
-        Alert.alert('Could not send', e instanceof Error ? e.message : 'Unknown error');
-      }
+    try {
+      const { message } = await api.sendMessage(groupId, {
+        body: body || undefined,
+        assets: assets.map((asset) => ({
+          uri: asset.uri,
+          mediaType: asset.type === 'video' ? 'video' : 'photo',
+          mimeType: asset.mimeType,
+        })),
+      });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === local.id
+            ? {
+                ...message,
+                media: message.media?.length ? message.media : media,
+                imageUrl: message.imageUrl ?? media[0]?.url,
+                status: 'sent',
+              }
+            : m,
+        ),
+      );
+    } catch (e) {
+      setMessages((prev) => prev.map((m) => (m.id === local.id ? { ...m, status: 'failed' } : m)));
+      Alert.alert('Could not send', e instanceof Error ? e.message : 'Unknown error');
     }
   };
 
-  const attachPhotos = async (from: 'library' | 'camera') => {
+  const attachMedia = async (from: 'library' | 'camera') => {
     if (sending) return;
     try {
       if (from === 'library') {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-          Alert.alert('Permission needed', 'Allow photo library access to send a picture.');
+          Alert.alert('Permission needed', 'Allow photo library access to send photos and videos.');
           return;
         }
       } else {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (!permission.granted) {
-          Alert.alert('Permission needed', 'Allow camera access to take a picture.');
+          Alert.alert('Permission needed', 'Allow camera access to take photos and videos.');
           return;
         }
       }
       const result =
         from === 'library'
           ? await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ['images'],
+              mediaTypes: ['images', 'videos'],
               allowsMultipleSelection: true,
               selectionLimit: 8,
               quality: 0.8,
+              videoMaxDuration: 60,
             })
-          : await ImagePicker.launchCameraAsync({ quality: 0.8 });
+          : await ImagePicker.launchCameraAsync({
+              mediaTypes: ['images', 'videos'],
+              quality: 0.8,
+              videoMaxDuration: 60,
+            });
       if (result.canceled || result.assets.length === 0) return;
-      setPendingPhotos((prev) => [...prev, ...result.assets].slice(0, 8));
+      setPendingMedia((prev) => [...prev, ...result.assets].slice(0, 8));
     } catch (e) {
-      Alert.alert('Could not add photos', e instanceof Error ? e.message : 'Unknown error');
+      Alert.alert('Could not add media', e instanceof Error ? e.message : 'Unknown error');
     }
-  };
-
-  const openPhotoPicker = () => {
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: ['Cancel', 'Take photo', 'Choose from library'], cancelButtonIndex: 0 },
-        (index) => {
-          if (index === 1) void attachPhotos('camera');
-          if (index === 2) void attachPhotos('library');
-        },
-      );
-      return;
-    }
-    Alert.alert('Add photos', undefined, [
-      { text: 'Take photo', onPress: () => void attachPhotos('camera') },
-      { text: 'Choose from library', onPress: () => void attachPhotos('library') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
   };
 
   const myId = session?.user.id;
@@ -330,6 +294,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
           const next = messages[index + 1];
           const firstInGroup = !prev || prev.userId !== item.userId;
           const lastInGroup = !next || next.userId !== item.userId;
+          const media = chatMediaOf(item);
           return (
             <View
               style={[
@@ -354,30 +319,25 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                   delayLongPress={350}
                   disabled={mine}
                 >
-                {item.imageUrl ? (
-                  <Image
-                    source={{ uri: item.imageUrl }}
-                    style={[
-                      styles.photo,
-                      mine && lastInGroup ? styles.photoMineTail : null,
-                      !mine && lastInGroup ? styles.photoTheirsTail : null,
-                      item.status === 'sending' ? styles.photoSending : null,
-                    ]}
+                  <ChatMediaBlock
+                    media={media}
+                    mine={mine}
+                    lastInGroup={lastInGroup}
+                    sending={item.status === 'sending'}
                   />
-                ) : null}
-                {item.body ? (
-                  <View
-                    style={[
-                      styles.bubble,
-                      mine ? styles.bubbleMine : styles.bubbleTheirs,
-                      mine && lastInGroup && !item.imageUrl ? styles.bubbleMineTail : null,
-                      !mine && lastInGroup && !item.imageUrl ? styles.bubbleTheirsTail : null,
-                      item.imageUrl ? styles.bubbleAfterPhoto : null,
-                    ]}
-                  >
-                    <Text style={[styles.body, mine ? styles.bodyMine : null]}>{item.body}</Text>
-                  </View>
-                ) : null}
+                  {item.body ? (
+                    <View
+                      style={[
+                        styles.bubble,
+                        mine ? styles.bubbleMine : styles.bubbleTheirs,
+                        mine && lastInGroup && media.length === 0 ? styles.bubbleMineTail : null,
+                        !mine && lastInGroup && media.length === 0 ? styles.bubbleTheirsTail : null,
+                        media.length > 0 ? styles.bubbleAfterPhoto : null,
+                      ]}
+                    >
+                      <Text style={[styles.body, mine ? styles.bodyMine : null]}>{item.body}</Text>
+                    </View>
+                  ) : null}
                 </Pressable>
               </View>
               {mine ? <SendReceipt status={item.status} /> : null}
@@ -407,57 +367,69 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         </View>
       </Modal>
 
-      {composerVisible ? (
-        <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-          <Pressable onPress={openPhotoPicker} hitSlop={8} style={styles.mediaBtn} accessibilityLabel="Add photos">
+      <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+        {pendingMedia.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.pendingStrip}
+            contentContainerStyle={styles.pendingContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {pendingMedia.map((asset, index) => (
+              <Pressable
+                key={`${asset.uri}-${index}`}
+                onPress={() => setPendingMedia((prev) => prev.filter((_, i) => i !== index))}
+                style={styles.pendingThumbWrap}
+              >
+                <Image source={{ uri: asset.uri }} style={styles.pendingThumb} />
+                {asset.type === 'video' ? (
+                  <View style={styles.pendingPlay} pointerEvents="none">
+                    <Ionicons name="play" size={12} color="#fff" />
+                  </View>
+                ) : null}
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
+        <View style={styles.composerRow}>
+          <Pressable
+            onPress={() => void attachMedia('camera')}
+            hitSlop={8}
+            style={styles.mediaBtn}
+            accessibilityLabel="Take photo or video"
+          >
+            <Ionicons name="camera-outline" size={26} color={colors.primary} />
+          </Pressable>
+          <Pressable
+            onPress={() => void attachMedia('library')}
+            hitSlop={8}
+            style={styles.mediaBtn}
+            accessibilityLabel="Add photos or videos"
+          >
             <Ionicons name="image-outline" size={26} color={colors.primary} />
           </Pressable>
           <TextInput
             value={draft}
             onChangeText={setDraft}
-            onFocus={() => setComposer(true)}
             placeholder="Message..."
             placeholderTextColor={colors.textMuted}
             style={styles.input}
             multiline
           />
-          {pendingPhotos.length > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.pendingStrip}
-              contentContainerStyle={styles.pendingContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              {pendingPhotos.map((photo, index) => (
-                <Pressable
-                  key={`${photo.uri}-${index}`}
-                  onPress={() => setPendingPhotos((prev) => prev.filter((_, i) => i !== index))}
-                  style={styles.pendingThumbWrap}
-                >
-                  <Image source={{ uri: photo.uri }} style={styles.pendingThumb} />
-                </Pressable>
-              ))}
-            </ScrollView>
-          ) : null}
           <Pressable
             onPress={send}
-            disabled={(!draft.trim() && pendingPhotos.length === 0) || sending}
+            disabled={(!draft.trim() && pendingMedia.length === 0) || sending}
+            accessibilityLabel="Send"
             style={[
               styles.send,
-              (!draft.trim() && pendingPhotos.length === 0) || sending ? styles.sendOff : null,
+              (!draft.trim() && pendingMedia.length === 0) || sending ? styles.sendOff : null,
             ]}
           >
             <Ionicons name="arrow-up" size={20} color={colors.onPrimary} />
           </Pressable>
         </View>
-      ) : (
-        <Pressable
-          onPress={() => setComposer(true)}
-          style={[styles.composerPeek, { height: Math.max(insets.bottom, spacing.md) }]}
-          accessibilityLabel="Show message box"
-        />
-      )}
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -481,6 +453,107 @@ function SendReceipt({ status }: { status?: ChatMessage['status'] }) {
         color={failed ? colors.danger : sending ? colors.primary : colors.onPrimary}
       />
     </View>
+  );
+}
+
+const ALBUM_SIZE = 220;
+const ALBUM_GAP = 2;
+const ALBUM_HALF = (ALBUM_SIZE - ALBUM_GAP) / 2;
+
+function ChatMediaBlock({
+  media,
+  mine,
+  lastInGroup,
+  sending,
+}: {
+  media: ChatMedia[];
+  mine: boolean;
+  lastInGroup: boolean;
+  sending: boolean;
+}) {
+  if (media.length === 0) return null;
+  const tail = lastInGroup ? (mine ? styles.photoMineTail : styles.photoTheirsTail) : null;
+  const sendingStyle = sending ? styles.photoSending : null;
+  if (media.length === 1) {
+    const item = media[0];
+    if (item.mediaType === 'video') {
+      return (
+        <View style={[styles.album, tail, sendingStyle]}>
+          <ChatVideo url={item.url} style={styles.photo} controls />
+        </View>
+      );
+    }
+    return <Image source={{ uri: item.url }} style={[styles.photo, tail, sendingStyle]} />;
+  }
+  const visible = media.slice(0, 4);
+  const extra = media.length - visible.length;
+  return (
+    <View style={[styles.album, tail, sendingStyle]}>
+      <View style={styles.albumGrid}>
+        {visible.map((item, index) => {
+          const isLastVisible = index === visible.length - 1;
+          const wide = visible.length === 3 && index === 2;
+          return (
+            <ChatAlbumTile
+              key={`${item.url}-${index}`}
+              item={item}
+              extra={isLastVisible && extra > 0 ? extra : 0}
+              width={wide ? ALBUM_SIZE : ALBUM_HALF}
+              height={ALBUM_HALF}
+            />
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function ChatAlbumTile({
+  item,
+  extra,
+  width,
+  height,
+}: {
+  item: ChatMedia;
+  extra: number;
+  width: number;
+  height: number;
+}) {
+  return (
+    <View style={{ height, width }}>
+      {item.mediaType === 'video' ? (
+        <ChatVideo url={item.url} style={styles.albumFill} />
+      ) : (
+        <Image source={{ uri: item.url }} style={styles.albumFill} />
+      )}
+      {item.mediaType === 'video' && extra === 0 ? (
+        <View style={styles.playBadge} pointerEvents="none">
+          <Ionicons name="play" size={16} color="#fff" />
+        </View>
+      ) : null}
+      {extra > 0 ? (
+        <View style={styles.extraOverlay} pointerEvents="none">
+          <Text style={styles.extraText}>+{extra}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function ChatVideo({
+  url,
+  style,
+  controls = false,
+}: {
+  url: string;
+  style: StyleProp<ViewStyle>;
+  controls?: boolean;
+}) {
+  const player = useVideoPlayer(url, (p) => {
+    p.loop = false;
+  });
+  return (
+    <VideoView player={player} style={style} contentFit="cover" nativeControls={controls} />
   );
 }
 
@@ -564,6 +637,46 @@ const styles = StyleSheet.create({
   photoSending: {
     opacity: 0.72,
   },
+  album: {
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    overflow: 'hidden',
+    width: ALBUM_SIZE,
+  },
+  albumGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: ALBUM_GAP,
+  },
+  albumFill: {
+    height: '100%',
+    width: '100%',
+  },
+  playBadge: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    bottom: 0,
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  extraOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    bottom: 0,
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  extraText: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '700',
+  },
   receipt: {
     alignItems: 'center',
     borderRadius: 8,
@@ -616,26 +729,27 @@ const styles = StyleSheet.create({
     color: colors.onPrimary,
   },
   composer: {
-    alignItems: 'flex-end',
     backgroundColor: colors.background,
     borderTopColor: colors.border,
     borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: 8,
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
   },
-  composerPeek: {
-    backgroundColor: colors.background,
+  composerRow: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    flexShrink: 0,
+    gap: 8,
   },
   mediaBtn: {
     alignItems: 'center',
+    flexShrink: 0,
     height: 44,
     justifyContent: 'center',
     width: 32,
   },
   pendingStrip: {
-    maxWidth: 132,
+    marginBottom: 8,
   },
   pendingContent: {
     alignItems: 'center',
@@ -643,6 +757,7 @@ const styles = StyleSheet.create({
   },
   pendingThumbWrap: {
     height: 44,
+    overflow: 'hidden',
     width: 44,
   },
   pendingThumb: {
@@ -651,6 +766,17 @@ const styles = StyleSheet.create({
     height: 44,
     width: 44,
   },
+  pendingPlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    borderRadius: 8,
+    bottom: 0,
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
   input: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -658,9 +784,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     color: colors.text,
     flex: 1,
+    flexShrink: 1,
     fontSize: 16,
     maxHeight: 120,
     minHeight: 44,
+    minWidth: 0,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
@@ -668,6 +796,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.primary,
     borderRadius: 18,
+    flexShrink: 0,
     height: 36,
     justifyContent: 'center',
     marginBottom: 4,

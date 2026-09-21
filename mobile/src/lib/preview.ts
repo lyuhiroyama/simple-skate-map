@@ -139,6 +139,19 @@ async function persist() {
   );
 }
 
+async function persistChatAsset(groupId: string, uri: string, mediaType: 'photo' | 'video') {
+  const dirRoot = FileSystem.documentDirectory;
+  if (!dirRoot) return uri;
+  const id = `chatmedia-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const ext = uri.split('.').pop()?.toLowerCase();
+  const safeExt = ext && /^[a-z0-9]{1,8}$/.test(ext) ? ext : mediaType === 'video' ? 'mp4' : 'jpg';
+  const dir = `${dirRoot}chat-media/${groupId}/`;
+  await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  const dest = `${dir}${id}.${safeExt}`;
+  await FileSystem.copyAsync({ from: uri, to: dest });
+  return dest;
+}
+
 export async function initPreview() {
   const raw = await AsyncStorage.getItem(STORE_KEY);
   if (!raw) return;
@@ -233,24 +246,19 @@ export const previewApi = {
     };
   },
 
-  sendMessage: async (groupId: string, input: { body?: string; imageUri?: string }) => {
+  sendMessage: async (
+    groupId: string,
+    input: { body?: string; assets?: { uri: string; mediaType: 'photo' | 'video'; mimeType?: string | null }[] },
+  ) => {
     const text = input.body?.trim() ?? '';
-    let imageUrl: string | undefined;
-    if (input.imageUri) {
-      const dirRoot = FileSystem.documentDirectory;
-      if (dirRoot) {
-        const id = `chatimg-${Date.now()}`;
-        const ext = input.imageUri.split('.').pop()?.toLowerCase();
-        const safeExt = ext && /^[a-z0-9]{1,8}$/.test(ext) ? ext : 'jpg';
-        const dir = `${dirRoot}chat-media/${groupId}/`;
-        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-        imageUrl = `${dir}${id}.${safeExt}`;
-        await FileSystem.copyAsync({ from: input.imageUri, to: imageUrl });
-      } else {
-        imageUrl = input.imageUri;
-      }
-    }
-    if (!text && !imageUrl) throw new Error('Message is empty');
+    const assets = input.assets ?? [];
+    const media = await Promise.all(
+      assets.map(async (asset) => ({
+        url: await persistChatAsset(groupId, asset.uri, asset.mediaType),
+        mediaType: asset.mediaType,
+      })),
+    );
+    if (!text && media.length === 0) throw new Error('Message is empty');
     if (text) assertCleanText(text, 'Message');
     const message: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -259,7 +267,8 @@ export const previewApi = {
       username: previewUsername,
       body: text,
       createdAt: new Date().toISOString(),
-      imageUrl,
+      media,
+      imageUrl: media[0]?.url,
     };
     messagesByGroup[groupId] = [...(messagesByGroup[groupId] ?? []), message];
     await persist();
