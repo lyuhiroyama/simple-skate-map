@@ -10,6 +10,15 @@ import { moderationRouter } from './routes/moderation.js';
 import { spotsRouter } from './routes/spots.js';
 import { supabaseAdmin } from './supabase.js';
 
+function publicErrorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  return 'Internal server error';
+}
+
 const app = express();
 
 app.use(cors());
@@ -104,7 +113,7 @@ app.use(
   (err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error(err);
     const status = err instanceof HttpError ? err.status : 500;
-    const message = err instanceof Error ? err.message : 'Internal server error';
+    const message = publicErrorMessage(err);
     res.status(status).json({ error: message });
   },
 );

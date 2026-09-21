@@ -288,7 +288,7 @@ groupsRouter.get('/:groupId/messages', async (req, res) => {
 
   const { data, error } = await supabaseAdmin
     .from('messages')
-    .select('id, group_id, user_id, body, storage_path, media, spot, created_at, profiles(username)')
+    .select('id, group_id, user_id, body, storage_path, media, spot, created_at, profiles!messages_user_id_fkey(username)')
     .eq('group_id', req.params.groupId)
     .order('created_at', { ascending: true });
   if (error) throw error;
