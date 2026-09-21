@@ -1,8 +1,7 @@
 {
   "cli": {
     "version": ">= 16.17.0",
-    "appVersionSource": "remote",
-    "metadataPath": "./store.config.json"
+    "appVersionSource": "remote"
   },
   "build": {
     "production": {
