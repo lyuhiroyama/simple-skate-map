@@ -401,16 +401,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
               )}
               <View style={[styles.cluster, mine ? styles.clusterMine : null]}>
                 {!mine && firstInBurst ? (
-                  <View style={styles.senderRow}>
-                    <Text style={styles.sender}>{item.username}</Text>
-                    <Pressable
-                      onPress={() => openMessageActions(item)}
-                      hitSlop={8}
-                      accessibilityLabel="Report or block"
-                    >
-                      <Ionicons name="flag-outline" size={12} color={colors.textMuted} />
-                    </Pressable>
-                  </View>
+                  <Text style={styles.sender}>{item.username}</Text>
                 ) : null}
                 <Pressable
                   onLongPress={() => openMessageActions(item)}
@@ -714,48 +705,51 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
           </ScrollView>
         ) : null}
         <View style={styles.composerRow}>
-          <Pressable
-            onPress={() => void attachMedia('camera')}
-            hitSlop={8}
-            style={styles.mediaBtn}
-            accessibilityLabel="Take photo or video"
-          >
-            <Ionicons name="camera-outline" size={26} color={colors.primary} />
-          </Pressable>
-          <Pressable
-            onPress={() => void attachMedia('library')}
-            hitSlop={8}
-            style={styles.mediaBtn}
-            accessibilityLabel="Add photos or videos"
-          >
-            <Ionicons name="image-outline" size={26} color={colors.primary} />
-          </Pressable>
-          <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Message..."
-            placeholderTextColor={colors.textMuted}
-            style={styles.input}
-            multiline
-            returnKeyType="send"
-            enablesReturnKeyAutomatically
-            submitBehavior="submit"
-            keyboardAppearance="light"
-            onSubmitEditing={() => {
-              void send();
-            }}
-          />
-          <Pressable
-            onPress={send}
-            disabled={(!draft.trim() && pendingMedia.length === 0) || sending}
-            accessibilityLabel="Send"
-            style={[
-              styles.send,
-              (!draft.trim() && pendingMedia.length === 0) || sending ? styles.sendOff : null,
-            ]}
-          >
-            <Ionicons name="arrow-up" size={20} color={colors.onPrimary} />
-          </Pressable>
+          {draft.length === 0 ? (
+            <Pressable
+              onPress={() => void attachMedia('camera')}
+              style={styles.cameraBtn}
+              accessibilityLabel="Take photo or video"
+            >
+              <Ionicons name="camera" size={22} color={colors.onPrimary} />
+            </Pressable>
+          ) : null}
+          <View style={styles.inputWrap}>
+            <TextInput
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Message..."
+              placeholderTextColor={colors.textMuted}
+              style={styles.input}
+              multiline
+              returnKeyType="send"
+              enablesReturnKeyAutomatically
+              submitBehavior="submit"
+              keyboardAppearance="light"
+              onSubmitEditing={() => {
+                void send();
+              }}
+            />
+            {draft.length === 0 ? (
+              <Pressable
+                onPress={() => void attachMedia('library')}
+                style={styles.galleryBtn}
+                accessibilityLabel="Add photos or videos"
+              >
+                <Ionicons name="image-outline" size={22} color={colors.textMuted} />
+              </Pressable>
+            ) : null}
+          </View>
+          {draft.trim() || pendingMedia.length > 0 ? (
+            <Pressable
+              onPress={send}
+              disabled={sending}
+              accessibilityLabel="Send"
+              style={[styles.send, sending ? styles.sendOff : null]}
+            >
+              <Ionicons name="arrow-up" size={20} color={colors.onPrimary} />
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -1034,16 +1028,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
   },
-  senderRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 4,
-    marginLeft: 2,
-  },
   sender: {
     color: colors.textMuted,
     fontSize: 11,
+    marginBottom: 4,
+    marginLeft: 2,
   },
   photo: {
     backgroundColor: colors.surface,
@@ -1116,10 +1105,10 @@ const styles = StyleSheet.create({
   },
   bubble: {
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 9,
   },
   bubbleReacted: {
-    paddingVertical: 20,
+    paddingVertical: 12,
   },
   bubbleMine: {
     alignSelf: 'flex-end',
@@ -1205,12 +1194,32 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     gap: 8,
   },
-  mediaBtn: {
+  cameraBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 22,
+    flexShrink: 0,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  inputWrap: {
+    alignItems: 'flex-end',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 22,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    minHeight: 44,
+    minWidth: 0,
+  },
+  galleryBtn: {
     alignItems: 'center',
     flexShrink: 0,
     height: 44,
     justifyContent: 'center',
-    width: 32,
+    width: 40,
   },
   pendingStrip: {
     marginBottom: 8,
@@ -1242,10 +1251,6 @@ const styles = StyleSheet.create({
     top: 0,
   },
   input: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 22,
-    borderWidth: 1,
     color: colors.text,
     flex: 1,
     flexShrink: 1,

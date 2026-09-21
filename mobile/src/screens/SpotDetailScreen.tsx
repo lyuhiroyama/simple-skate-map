@@ -43,24 +43,19 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      api
-        .getSpot(spotId)
-        .then(({ spot: s }) => {
-          if (!cancelled) {
-            setSpot(s);
-            setMediaIndex(0);
-          }
+      Promise.all([
+        api.getSpot(spotId),
+        api.getGroups().catch(() => ({ groups: [] as Group[] })),
+      ])
+        .then(([{ spot: s }, { groups: g }]) => {
+          if (cancelled) return;
+          setSpot(s);
+          setGroups(g);
+          setMediaIndex(0);
+          setError(null);
         })
         .catch((e: unknown) => {
           if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load spot');
-        });
-      api
-        .getGroups()
-        .then(({ groups: g }) => {
-          if (!cancelled) setGroups(g);
-        })
-        .catch(() => {
-          if (!cancelled) setGroups([]);
         });
       return () => {
         cancelled = true;
