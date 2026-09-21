@@ -13,8 +13,28 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60; // 1 hour
 
 type ShareRow = { group_id: string };
 
-function groupIdsFrom(shares: ShareRow[] | null | undefined): string[] {
-  return (shares ?? []).map((s) => s.group_id);
+function groupIdsFrom(shares: ShareRow[] | ShareRow | null | undefined): string[] {
+  const list = Array.isArray(shares) ? shares : shares ? [shares] : [];
+  return list.map((s) => s.group_id).filter(Boolean);
+}
+
+function isTransient(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /SSL handshake|525|522|503|ECONNRESET|ETIMEDOUT|fetch failed|network/i.test(message);
+}
+
+async function retryTransient<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (i === attempts - 1 || !isTransient(err)) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 400 * (i + 1)));
+    }
+  }
+  throw last;
 }
 
 function mapPin(s: {
@@ -162,20 +182,22 @@ spotsRouter.post('/', async (req, res) => {
 
 /** Full spot detail: description, creator, and signed media URLs. */
 spotsRouter.get('/:spotId', async (req, res) => {
-  const [{ data: spot, error }, myGroups, blocked, hidden] = await Promise.all([
+  const [{ data: spot, error }, myGroups, blocked, hidden, sharesRes] = await Promise.all([
     supabaseAdmin
       .from('spots')
       .select(
-        'id, created_by, name, description, address, latitude, longitude, created_at, profiles(username), spot_media(id, storage_path, media_type, created_at), spot_shares(group_id)',
+        'id, created_by, name, description, address, latitude, longitude, created_at, profiles(username), spot_media(id, storage_path, media_type, created_at)',
       )
       .eq('id', req.params.spotId)
       .maybeSingle(),
     memberGroupIds(req.userId),
     blockedUserIds(req.userId),
     hiddenContentIds(req.userId, 'spot'),
+    supabaseAdmin.from('spot_shares').select('group_id').eq('spot_id', req.params.spotId),
   ]);
   if (error) throw error;
-  const shareIds = groupIdsFrom(spot?.spot_shares);
+  if (sharesRes.error) throw sharesRes.error;
+  const shareIds = groupIdsFrom(sharesRes.data);
   const canAccess =
     !!spot && (spot.created_by === req.userId || shareIds.some((id) => myGroups.includes(id)));
   if (!spot || !canAccess) {
@@ -212,7 +234,7 @@ spotsRouter.get('/:spotId', async (req, res) => {
   res.json({
     spot: {
       id: spot.id,
-      groupIds: groupIdsFrom(spot.spot_shares),
+      groupIds: shareIds,
       createdBy: spot.created_by,
       createdByUsername:
         (spot.profiles as unknown as { username: string } | null)?.username ?? 'unknown',
@@ -346,15 +368,17 @@ spotsRouter.patch('/:spotId', async (req, res) => {
     }
   }
 
-  const { error: clearError } = await supabaseAdmin.from('spot_shares').delete().eq('spot_id', spot.id);
-  if (clearError) throw clearError;
+  await retryTransient(async () => {
+    const { error: clearError } = await supabaseAdmin.from('spot_shares').delete().eq('spot_id', spot.id);
+    if (clearError) throw clearError;
 
-  if (groupIds.length > 0) {
-    const { error: shareError } = await supabaseAdmin.from('spot_shares').insert(
-      groupIds.map((groupId) => ({ spot_id: spot.id, group_id: groupId })),
-    );
-    if (shareError) throw shareError;
-  }
+    if (groupIds.length > 0) {
+      const { error: shareError } = await supabaseAdmin.from('spot_shares').insert(
+        groupIds.map((groupId) => ({ spot_id: spot.id, group_id: groupId })),
+      );
+      if (shareError) throw shareError;
+    }
+  });
 
   res.json({ spot: { id: spot.id, groupIds } });
 });
@@ -380,12 +404,16 @@ spotsRouter.post('/:spotId/media', async (req, res) => {
 
   const { data: spot, error } = await supabaseAdmin
     .from('spots')
-    .select('id')
+    .select('id, created_by')
     .eq('id', req.params.spotId)
     .maybeSingle();
   if (error) throw error;
-  if (!spot || !(await canAccessSpot(req.userId, spot.id))) {
+  if (!spot) {
     res.status(404).json({ error: 'Spot not found' });
+    return;
+  }
+  if (spot.created_by !== req.userId) {
+    res.status(403).json({ error: 'Only the spot creator can add media' });
     return;
   }
 

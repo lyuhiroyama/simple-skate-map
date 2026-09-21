@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     width: 44,
   },
   emojiBtnOn: {
-    backgroundColor: colors.border,
+    backgroundColor: colors.selected,
   },
   emoji: {
     fontSize: 26,

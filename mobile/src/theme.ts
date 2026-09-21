@@ -6,6 +6,8 @@ export const colors = {
   primary: '#e7e2d8',
   primaryDark: '#b8b09f',
   onPrimary: '#141413',
+  selected: '#5554F8',
+  onSelected: '#ffffff',
   text: '#f3efe6',
   textMuted: '#9a958b',
   danger: '#ef4444',

@@ -424,15 +424,25 @@ export const previewApi = {
             : 'jpg';
 
     const id = `media-${Date.now()}`;
-    const dir = `${FileSystem.documentDirectory}spot-media/${spotId}/`;
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-    const dest = `${dir}${id}.${ext}`;
-    await FileSystem.copyAsync({ from: asset.uri, to: dest });
+    let url = asset.uri;
+    const dir = FileSystem.documentDirectory
+      ? `${FileSystem.documentDirectory}spot-media/${spotId}/`
+      : null;
+    if (dir) {
+      try {
+        await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+        const dest = `${dir}${id}.${ext}`;
+        await FileSystem.copyAsync({ from: asset.uri, to: dest });
+        url = dest;
+      } catch {
+        url = asset.uri;
+      }
+    }
 
     spot.media.push({
       id,
       mediaType,
-      url: dest,
+      url,
       createdAt: new Date().toISOString(),
     });
     await persist();

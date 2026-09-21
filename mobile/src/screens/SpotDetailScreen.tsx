@@ -13,13 +13,15 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
 import { confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
-import { EmptyState } from '../components/ui';
+import { Button, EmptyState } from '../components/ui';
 import { SendSpotSheet } from '../components/SendSpotSheet';
+import { uploadSpotAsset } from '../lib/upload';
 import type { Group, SpotDetail, SpotMedia } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, radius, spacing } from '../theme';
@@ -27,6 +29,7 @@ import { colors, radius, spacing } from '../theme';
 const MEDIA_WIDTH = Dimensions.get('window').width - spacing.lg * 2;
 const MEDIA_HEIGHT = Math.round(MEDIA_WIDTH * 0.75);
 const MEDIA_PAGE = MEDIA_WIDTH + spacing.sm;
+const MAX_MEDIA = 8;
 
 export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'SpotDetail'>) {
   const { spotId } = route.params;
@@ -38,25 +41,32 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
   const [sendOpen, setSendOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [mediaIndex, setMediaIndex] = useState(0);
-  const sharingRef = useRef(false);
+  const [addingMedia, setAddingMedia] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const groupIdsRef = useRef<string[]>([]);
+  const shareChain = useRef(Promise.resolve());
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      Promise.all([
-        api.getSpot(spotId),
-        api.getGroups().catch(() => ({ groups: [] as Group[] })),
-      ])
-        .then(([{ spot: s }, { groups: g }]) => {
+      void (async () => {
+        await shareChain.current.catch(() => undefined);
+        if (cancelled) return;
+        try {
+          const [{ spot: s }, { groups: g }] = await Promise.all([
+            api.getSpot(spotId),
+            api.getGroups().catch(() => ({ groups: [] as Group[] })),
+          ]);
           if (cancelled) return;
+          groupIdsRef.current = s.groupIds;
           setSpot(s);
           setGroups(g);
           setMediaIndex(0);
           setError(null);
-        })
-        .catch((e: unknown) => {
+        } catch (e: unknown) {
           if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load spot');
-        });
+        }
+      })();
       return () => {
         cancelled = true;
       };
@@ -130,6 +140,7 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
     setSending(true);
     try {
       const { groupIds: next } = await api.sendSpot(spotId, { groupIds, body: body || undefined });
+      groupIdsRef.current = next;
       setSpot((current) => (current ? { ...current, groupIds: next } : current));
       setSendOpen(false);
     } catch (e) {
@@ -139,21 +150,77 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
     }
   };
 
-  const toggleShare = async (groupId: string) => {
-    if (!isMine || sharingRef.current) return;
-    const previous = spot.groupIds;
+  const toggleShare = (groupId: string) => {
+    if (!isMine) return;
+    const previous = groupIdsRef.current;
     const next = previous.includes(groupId)
       ? previous.filter((id) => id !== groupId)
       : [...previous, groupId];
-    setSpot({ ...spot, groupIds: next });
-    sharingRef.current = true;
+    groupIdsRef.current = next;
+    setSpot((current) => (current ? { ...current, groupIds: next } : current));
+    shareChain.current = shareChain.current.catch(() => undefined).then(async () => {
+      setSharing(true);
+      try {
+        const { spot: updated } = await api.updateSpotShares(spot.id, next);
+        if (groupIdsRef.current.join() !== next.join()) return;
+        groupIdsRef.current = updated.groupIds;
+        setSpot((current) => (current ? { ...current, groupIds: updated.groupIds } : current));
+      } catch (e) {
+        if (groupIdsRef.current.join() !== next.join()) return;
+        groupIdsRef.current = previous;
+        setSpot((current) => (current ? { ...current, groupIds: previous } : current));
+        Alert.alert('Could not update sharing', e instanceof Error ? e.message : 'Unknown error');
+      } finally {
+        setSharing(false);
+      }
+    });
+  };
+
+  const addMedia = async (from: 'library' | 'camera') => {
+    if (!isMine || addingMedia) return;
+    const remaining = MAX_MEDIA - spot.media.length;
+    if (remaining <= 0) {
+      Alert.alert('Limit reached', 'A pin can have up to 8 photos or videos.');
+      return;
+    }
     try {
-      await api.updateSpotShares(spot.id, next);
+      if (from === 'library') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Permission needed', 'Allow photo library access to attach media.');
+          return;
+        }
+      } else {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Permission needed', 'Allow camera access to take a photo.');
+          return;
+        }
+      }
+      const result =
+        from === 'library'
+          ? await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images', 'videos'],
+              allowsMultipleSelection: true,
+              selectionLimit: remaining,
+              quality: 0.8,
+              videoMaxDuration: 60,
+            })
+          : await ImagePicker.launchCameraAsync({ quality: 0.8 });
+      if (result.canceled || result.assets.length === 0) return;
+      const assets = result.assets.slice(0, remaining);
+      setAddingMedia(true);
+      for (const asset of assets) {
+        await uploadSpotAsset(spot.id, asset);
+      }
+      const { spot: next } = await api.getSpot(spotId);
+      groupIdsRef.current = next.groupIds;
+      setSpot(next);
+      setMediaIndex(Math.max(0, next.media.length - 1));
     } catch (e) {
-      setSpot((current) => (current ? { ...current, groupIds: previous } : current));
-      Alert.alert('Could not update sharing', e instanceof Error ? e.message : 'Unknown error');
+      Alert.alert('Could not add media', e instanceof Error ? e.message : 'Unknown error');
     } finally {
-      sharingRef.current = false;
+      setAddingMedia(false);
     }
   };
 
@@ -210,6 +277,27 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
             </ScrollView>
           </>
         )}
+        {isMine ? (
+          <View style={styles.mediaButtons}>
+            <View style={styles.mediaButton}>
+              <Button
+                title={addingMedia ? 'Uploading…' : 'Pick from library'}
+                variant="secondary"
+                onPress={() => void addMedia('library')}
+                loading={addingMedia}
+                disabled={addingMedia || spot.media.length >= MAX_MEDIA}
+              />
+            </View>
+            <View style={styles.mediaButton}>
+              <Button
+                title="Take photo"
+                variant="secondary"
+                onPress={() => void addMedia('camera')}
+                disabled={addingMedia || spot.media.length >= MAX_MEDIA}
+              />
+            </View>
+          </View>
+        ) : null}
       </View>
 
       {isMine ? (
@@ -226,8 +314,12 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
                   return (
                     <Pressable
                       key={g.id}
-                      onPress={() => void toggleShare(g.id)}
-                      style={[styles.groupChip, on ? styles.groupChipActive : null]}
+                      onPress={() => toggleShare(g.id)}
+                      style={[
+                        styles.groupChip,
+                        on ? styles.groupChipActive : null,
+                        sharing ? styles.groupChipBusy : null,
+                      ]}
                     >
                       <Text style={[styles.groupChipText, on ? styles.groupChipTextActive : null]}>
                         {g.name}
@@ -367,6 +459,14 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
     width: MEDIA_WIDTH,
   },
+  mediaButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  mediaButton: {
+    flex: 1,
+  },
   shareHint: {
     color: colors.textMuted,
     fontSize: 14,
@@ -386,8 +486,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   groupChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: colors.selected,
+    borderColor: colors.selected,
+  },
+  groupChipBusy: {
+    opacity: 0.55,
   },
   groupChipText: {
     color: colors.text,
@@ -395,7 +498,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   groupChipTextActive: {
-    color: colors.onPrimary,
+    color: colors.onSelected,
   },
   actions: {
     alignItems: 'center',

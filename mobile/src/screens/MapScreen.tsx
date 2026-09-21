@@ -253,14 +253,13 @@ export function MapScreen() {
         >
           <Ionicons name="navigate" size={22} color={colors.primary} />
         </Pressable>
-      </View>
-
-      <View style={styles.hint} pointerEvents="none">
-        <Text style={styles.hintText}>
-          {Platform.OS === 'web'
-            ? 'Right-click the map to pin a spot'
-            : 'Long-press the map to pin a spot'}
-        </Text>
+        <View style={styles.hint} pointerEvents="none">
+          <Text style={styles.hintText}>
+            {Platform.OS === 'web'
+              ? 'Right-click the map to pin a spot'
+              : 'Long-press the map to pin a spot'}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -357,8 +356,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   chipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: colors.selected,
+    borderColor: colors.selected,
   },
   chipText: {
     color: colors.text,
@@ -366,11 +365,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   chipTextActive: {
-    color: colors.onPrimary,
+    color: colors.onSelected,
   },
   fabStack: {
-    alignItems: 'center',
-    bottom: spacing.xl,
+    alignItems: 'flex-end',
+    bottom: spacing.md,
     gap: spacing.sm,
     position: 'absolute',
     right: spacing.lg,
@@ -394,11 +393,6 @@ const styles = StyleSheet.create({
   },
   hint: {
     alignItems: 'flex-end',
-    bottom: spacing.md,
-    left: spacing.md,
-    paddingRight: 72,
-    position: 'absolute',
-    right: 0,
   },
   hintText: {
     backgroundColor: 'rgba(15, 17, 21, 0.75)',

@@ -296,8 +296,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   groupChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: colors.selected,
+    borderColor: colors.selected,
   },
   groupChipText: {
     color: colors.text,
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   groupChipTextActive: {
-    color: colors.onPrimary,
+    color: colors.onSelected,
   },
   mediaRow: {
     flexDirection: 'row',

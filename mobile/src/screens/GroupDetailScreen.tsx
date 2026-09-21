@@ -758,7 +758,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
               accessibilityLabel="Send"
               style={[styles.send, sending ? styles.sendOff : null]}
             >
-              <Ionicons name="arrow-up" size={20} color={colors.onPrimary} />
+              <Ionicons name="arrow-up" size={20} color={colors.onSelected} />
             </Pressable>
           ) : null}
         </View>
@@ -1276,7 +1276,7 @@ const styles = StyleSheet.create({
   },
   send: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: colors.selected,
     borderRadius: 18,
     flexShrink: 0,
     height: 36,

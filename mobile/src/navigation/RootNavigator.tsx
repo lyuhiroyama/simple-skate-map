@@ -48,7 +48,7 @@ function TabsNavigator() {
         tabBarItemStyle: {
           paddingVertical: 4,
         },
-        tabBarActiveTintColor: colors.primary,
+        tabBarActiveTintColor: colors.selected,
         tabBarInactiveTintColor: colors.textMuted,
       }}
     >

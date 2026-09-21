@@ -14,6 +14,16 @@ class ApiError extends Error {
   }
 }
 
+function cleanErrorMessage(raw: string, status: number): string {
+  const text = raw.trim();
+  if (!text || text.length > 240 || /<!DOCTYPE|<html|SSL handshake|cloudflare/i.test(text)) {
+    return status >= 500
+      ? 'Could not reach the server. Try again in a moment.'
+      : `Request failed (${status})`;
+  }
+  return text;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -38,7 +48,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // non-JSON error body; keep default message
     }
-    throw new ApiError(message, res.status);
+    throw new ApiError(cleanErrorMessage(message, res.status), res.status);
   }
 
   if (res.status === 204) {
@@ -69,6 +79,26 @@ function invalidateCache(...keys: string[]) {
   for (const key of [...cache.keys()]) {
     if (keys.some((k) => key === k || key.startsWith(`${k}:`))) cache.delete(key);
   }
+}
+
+async function retryTransient<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      const status = err instanceof ApiError ? err.status : 0;
+      const message = err instanceof Error ? err.message : '';
+      const transient =
+        status >= 500 ||
+        status === 0 ||
+        /Could not reach the server|SSL handshake|network/i.test(message);
+      if (i === attempts - 1 || (status > 0 && status < 500) || !transient) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 400 * (i + 1)));
+    }
+  }
+  throw last;
 }
 
 async function cachedRequest<T>(key: string, path: string, init?: RequestInit): Promise<T> {
@@ -195,10 +225,12 @@ const liveApi = {
   },
 
   updateSpotShares: async (spotId: string, groupIds: string[]) => {
-    const result = await request<{ spot: { id: string; groupIds: string[] } }>(`/spots/${spotId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ groupIds }),
-    });
+    const result = await retryTransient(() =>
+      request<{ spot: { id: string; groupIds: string[] } }>(`/spots/${spotId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ groupIds }),
+      }),
+    );
     invalidateCache('spots');
     return result;
   },

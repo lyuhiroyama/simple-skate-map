@@ -11,12 +11,21 @@ import { spotsRouter } from './routes/spots.js';
 import { supabaseAdmin } from './supabase.js';
 
 function publicErrorMessage(err: unknown): string {
-  if (err instanceof Error && err.message) return err.message;
-  if (err && typeof err === 'object' && 'message' in err) {
-    const message = (err as { message?: unknown }).message;
-    if (typeof message === 'string' && message.trim()) return message;
+  let message = '';
+  if (err instanceof Error && err.message) message = err.message;
+  else if (err && typeof err === 'object' && 'message' in err) {
+    const value = (err as { message?: unknown }).message;
+    if (typeof value === 'string') message = value;
   }
-  return 'Internal server error';
+  const trimmed = message.trim();
+  if (!trimmed) return 'Internal server error';
+  if (
+    trimmed.length > 240 ||
+    /<!DOCTYPE|<html|SSL handshake|cloudflare/i.test(trimmed)
+  ) {
+    return 'Could not reach the database. Try again in a moment.';
+  }
+  return trimmed;
 }
 
 const app = express();

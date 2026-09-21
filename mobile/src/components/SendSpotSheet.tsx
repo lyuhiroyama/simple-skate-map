@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
     width: 72,
   },
   avatarOn: {
-    borderColor: colors.primary,
+    borderColor: colors.selected,
   },
   avatarText: {
     color: colors.text,
