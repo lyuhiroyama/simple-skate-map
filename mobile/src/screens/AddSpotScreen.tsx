@@ -178,7 +178,7 @@ export function AddSpotScreen({ route, navigation }: RootStackScreenProps<'AddSp
 
         <Text style={styles.label}>Share with</Text>
         {groups.length === 0 ? (
-          <Text style={styles.shareHint}>Just you, unless you join a group later.</Text>
+          <Text style={styles.shareHint}>Just you. Share from the pin after you join a group.</Text>
         ) : (
           <>
             <Text style={styles.shareHint}>Tap any groups to share. None selected = only you.</Text>

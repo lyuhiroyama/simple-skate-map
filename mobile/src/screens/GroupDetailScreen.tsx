@@ -44,6 +44,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
   const [pendingMedia, setPendingMedia] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const lastOffsetY = useRef(0);
   const nearBottomRef = useRef(true);
 
@@ -77,12 +78,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
     }, [load]),
   );
 
-  const shareInvite = useCallback(async () => {
-    if (!group) return;
-    await Share.share({
-      message: `Join ${group.name} on Simple Skate Map. Invite code: ${group.inviteCode}`,
-    });
-  }, [group]);
+  const inviteCode = group?.inviteCode?.toUpperCase() ?? '';
 
   const openMedia = useCallback(() => {
     setMenuOpen(false);
@@ -91,8 +87,8 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
 
   const openInvite = useCallback(() => {
     setMenuOpen(false);
-    void shareInvite();
-  }, [shareInvite]);
+    setInviteOpen(true);
+  }, []);
 
   const leaveGroup = useCallback(() => {
     setMenuOpen(false);
@@ -362,6 +358,33 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
             <Pressable onPress={leaveGroup} style={styles.menuItem} accessibilityLabel="Leave">
               <Ionicons name="exit-outline" size={18} color={colors.danger} />
               <Text style={styles.menuLabelDanger}>Leave</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={inviteOpen} transparent animationType="fade" onRequestClose={() => setInviteOpen(false)}>
+        <View style={styles.inviteBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setInviteOpen(false)} />
+          <View style={styles.inviteCard}>
+            <Text style={styles.inviteTitle}>Invite code</Text>
+            <Text style={styles.inviteCode} selectable>
+              {inviteCode || 'Unavailable'}
+            </Text>
+            <Text style={styles.inviteHint}>
+              Friends paste this under Invite code on Groups.
+            </Text>
+            <Pressable
+              onPress={() => {
+                if (!group || !inviteCode) return;
+                void Share.share({
+                  message: `Join ${group.name} on Simple Skate Map. Invite code: ${inviteCode}`,
+                });
+              }}
+              style={styles.inviteShare}
+              accessibilityLabel="Share invite code"
+            >
+              <Text style={styles.inviteShareText}>Share</Text>
             </Pressable>
           </View>
         </View>
@@ -807,6 +830,52 @@ const styles = StyleSheet.create({
   },
   menuBackdrop: {
     flex: 1,
+  },
+  inviteBackdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  inviteCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: spacing.sm,
+    maxWidth: 360,
+    padding: spacing.lg,
+    width: '100%',
+  },
+  inviteTitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  inviteCode: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+  },
+  inviteHint: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  inviteShare: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    marginTop: spacing.xs,
+    paddingVertical: 12,
+  },
+  inviteShareText: {
+    color: colors.onPrimary,
+    fontSize: 16,
+    fontWeight: '700',
   },
   menu: {
     position: 'absolute',

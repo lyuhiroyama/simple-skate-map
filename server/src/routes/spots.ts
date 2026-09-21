@@ -212,6 +212,54 @@ spotsRouter.get('/:spotId', async (req, res) => {
   });
 });
 
+const shareSpotSchema = z.object({
+  groupIds: z.array(z.string().uuid()).max(50),
+});
+
+/** Replace which groups this pin is shared with. Creator only. */
+spotsRouter.patch('/:spotId', async (req, res) => {
+  const parsed = shareSpotSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid share payload' });
+    return;
+  }
+
+  const { data: spot, error } = await supabaseAdmin
+    .from('spots')
+    .select('id, created_by')
+    .eq('id', req.params.spotId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!spot) {
+    res.status(404).json({ error: 'Spot not found' });
+    return;
+  }
+  if (spot.created_by !== req.userId) {
+    res.status(403).json({ error: 'Only the spot creator can share it' });
+    return;
+  }
+
+  const groupIds = [...new Set(parsed.data.groupIds)];
+  for (const groupId of groupIds) {
+    if (!(await isGroupMember(req.userId, groupId))) {
+      res.status(403).json({ error: 'You are not a member of one of those groups' });
+      return;
+    }
+  }
+
+  const { error: clearError } = await supabaseAdmin.from('spot_shares').delete().eq('spot_id', spot.id);
+  if (clearError) throw clearError;
+
+  if (groupIds.length > 0) {
+    const { error: shareError } = await supabaseAdmin.from('spot_shares').insert(
+      groupIds.map((groupId) => ({ spot_id: spot.id, group_id: groupId })),
+    );
+    if (shareError) throw shareError;
+  }
+
+  res.json({ spot: { id: spot.id, groupIds } });
+});
+
 const addMediaSchema = z.object({
   mediaType: z.enum(['photo', 'video']),
   fileExtension: z

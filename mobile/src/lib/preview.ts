@@ -324,6 +324,15 @@ export const previewApi = {
     return { spot: { id: spot.id } };
   },
 
+  updateSpotShares: async (spotId: string, groupIds: string[]) => {
+    const spot = spots.find((s) => s.id === spotId);
+    if (!spot) throw new Error('Spot not found');
+    if (spot.createdBy !== USER_ID) throw new Error('Only the spot creator can share it');
+    spot.groupIds = [...groupIds];
+    await persist();
+    return { spot: { id: spot.id, groupIds: spot.groupIds } };
+  },
+
   registerSpotMedia: async (): Promise<PendingUpload> => {
     throw new Error('Media uploads are disabled in this web preview');
   },

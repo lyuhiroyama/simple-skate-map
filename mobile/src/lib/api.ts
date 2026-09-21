@@ -139,6 +139,12 @@ const liveApi = {
       body: JSON.stringify(input),
     }),
 
+  updateSpotShares: (spotId: string, groupIds: string[]) =>
+    request<{ spot: { id: string; groupIds: string[] } }>(`/spots/${spotId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ groupIds }),
+    }),
+
   registerSpotMedia: (spotId: string, mediaType: 'photo' | 'video', fileExtension: string) =>
     request<PendingUpload>(`/spots/${spotId}/media`, {
       method: 'POST',

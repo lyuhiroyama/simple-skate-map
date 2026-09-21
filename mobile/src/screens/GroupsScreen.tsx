@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useCallback, useState } from 'react';
@@ -35,6 +36,7 @@ export function GroupsScreen() {
   const [usernameDraft, setUsernameDraft] = useState('');
   const [usernameOpen, setUsernameOpen] = useState(false);
   const [savingUsername, setSavingUsername] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -64,9 +66,13 @@ export function GroupsScreen() {
     if (!newGroupName.trim()) return;
     setBusy(true);
     try {
-      await api.createGroup(newGroupName.trim());
+      const { group } = await api.createGroup(newGroupName.trim());
       setNewGroupName('');
       await load();
+      Alert.alert(
+        'Group created',
+        `Invite code: ${group.inviteCode.toUpperCase()}\n\nShare that from the group’s Invite menu. Friends paste it under Invite code on Groups.`,
+      );
     } catch (e) {
       Alert.alert('Could not create group', e instanceof Error ? e.message : 'Unknown error');
     } finally {
@@ -86,6 +92,19 @@ export function GroupsScreen() {
       Alert.alert('Could not join', e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const copyInvite = async (item: Group) => {
+    const code = item.inviteCode.toUpperCase();
+    try {
+      await Clipboard.setStringAsync(code);
+      setCopiedId(item.id);
+      setTimeout(() => {
+        setCopiedId((current) => (current === item.id ? null : current));
+      }, 1500);
+    } catch {
+      Alert.alert('Could not copy', 'Long-press the code to copy, or share it from Invite in the group.');
     }
   };
 
@@ -170,7 +189,23 @@ export function GroupsScreen() {
               {item.memberCount} member{item.memberCount === 1 ? '' : 's'} ·{' '}
               {item.myRole === 'owner' ? 'you own this group' : 'member'}
             </Text>
+            <Text style={styles.cardCode} selectable>
+              Invite {item.inviteCode.toUpperCase()}
+            </Text>
           </View>
+          <Pressable
+            onPress={() => void copyInvite(item)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Copy invite code"
+            style={[styles.copyBtn, copiedId === item.id ? styles.copyBtnDone : null]}
+          >
+            <Ionicons
+              name={copiedId === item.id ? 'checkmark' : 'clipboard-outline'}
+              size={22}
+              color={copiedId === item.id ? colors.primary : colors.textMuted}
+            />
+          </Pressable>
         </Pressable>
       )}
       ListFooterComponent={
@@ -291,6 +326,26 @@ const styles = StyleSheet.create({
   cardMeta: {
     color: colors.textMuted,
     fontSize: 13,
+  },
+  cardCode: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+    marginTop: 2,
+  },
+  copyBtn: {
+    alignItems: 'center',
+    borderColor: colors.border,
+    borderRadius: 20,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: 'center',
+    marginLeft: spacing.sm,
+    width: 40,
+  },
+  copyBtnDone: {
+    borderColor: colors.primary,
   },
   footer: {
     alignItems: 'center',

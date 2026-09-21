@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,7 +18,7 @@ import { api } from '../lib/api';
 import { confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
 import { EmptyState } from '../components/ui';
-import type { SpotDetail, SpotMedia } from '../types';
+import type { Group, SpotDetail, SpotMedia } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, radius, spacing } from '../theme';
 
@@ -30,9 +30,11 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
   const { spotId } = route.params;
   const { session } = useAuth();
   const [spot, setSpot] = useState<SpotDetail | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [mediaIndex, setMediaIndex] = useState(0);
+  const sharingRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -47,6 +49,14 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
         })
         .catch((e: unknown) => {
           if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load spot');
+        });
+      api
+        .getGroups()
+        .then(({ groups: g }) => {
+          if (!cancelled) setGroups(g);
+        })
+        .catch(() => {
+          if (!cancelled) setGroups([]);
         });
       return () => {
         cancelled = true;
@@ -116,6 +126,24 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
 
   const isMine = session?.user.id === spot.createdBy;
 
+  const toggleShare = async (groupId: string) => {
+    if (!isMine || sharingRef.current) return;
+    const previous = spot.groupIds;
+    const next = previous.includes(groupId)
+      ? previous.filter((id) => id !== groupId)
+      : [...previous, groupId];
+    setSpot({ ...spot, groupIds: next });
+    sharingRef.current = true;
+    try {
+      await api.updateSpotShares(spot.id, next);
+    } catch (e) {
+      setSpot((current) => (current ? { ...current, groupIds: previous } : current));
+      Alert.alert('Could not update sharing', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      sharingRef.current = false;
+    }
+  };
+
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
       <Text style={styles.name}>{spot.name}</Text>
@@ -170,6 +198,35 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
           </>
         )}
       </View>
+
+      {isMine ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Share with</Text>
+          {groups.length === 0 ? (
+            <Text style={styles.sectionText}>Join a group to share this pin.</Text>
+          ) : (
+            <>
+              <Text style={styles.shareHint}>Tap a group to share or unshare. None selected = only you.</Text>
+              <View style={styles.groupRow}>
+                {groups.map((g) => {
+                  const on = spot.groupIds.includes(g.id);
+                  return (
+                    <Pressable
+                      key={g.id}
+                      onPress={() => void toggleShare(g.id)}
+                      style={[styles.groupChip, on ? styles.groupChipActive : null]}
+                    >
+                      <Text style={[styles.groupChipText, on ? styles.groupChipTextActive : null]}>
+                        {g.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
+      ) : null}
 
       {isMine ? (
         <Pressable
@@ -275,6 +332,36 @@ const styles = StyleSheet.create({
     height: MEDIA_HEIGHT,
     marginRight: spacing.sm,
     width: MEDIA_WIDTH,
+  },
+  shareHint: {
+    color: colors.textMuted,
+    fontSize: 14,
+  },
+  groupRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  groupChip: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  groupChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  groupChipText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  groupChipTextActive: {
+    color: colors.onPrimary,
   },
   deleteWrap: {
     alignSelf: 'center',
