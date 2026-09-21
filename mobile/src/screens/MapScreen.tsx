@@ -59,6 +59,10 @@ export function MapScreen() {
   const [locationBlocked, setLocationBlocked] = useState(false);
   const centeredOnUser = useRef(false);
 
+  const animateToUser = (position: Location.LocationObject) => {
+    mapRef.current?.animateToRegion(regionFrom(position), 450);
+  };
+
   const applyUserPosition = (position: Location.LocationObject) => {
     if (!centeredOnUser.current) {
       centeredOnUser.current = true;
@@ -159,13 +163,6 @@ export function MapScreen() {
     navigation.navigate('AddSpot', { latitude, longitude });
   };
 
-  const addAtMapCenter = async () => {
-    const camera = await mapRef.current?.getCamera();
-    if (camera) {
-      goToAddSpot(camera.center.latitude, camera.center.longitude);
-    }
-  };
-
   if (!initialRegion) {
     return (
       <View style={styles.center}>
@@ -244,15 +241,12 @@ export function MapScreen() {
         >
           <Ionicons name="navigate" size={22} color={colors.primary} />
         </Pressable>
-        <Pressable style={styles.fab} onPress={addAtMapCenter}>
-          <Text style={styles.fabText}>+</Text>
-        </Pressable>
       </View>
 
       <View style={styles.hint} pointerEvents="none">
         <Text style={styles.hintText}>
           {Platform.OS === 'web'
-            ? 'Right-click the map (or tap +) to pin a spot'
+            ? 'Right-click the map to pin a spot'
             : 'Long-press the map to pin a spot'}
         </Text>
       </View>
@@ -369,30 +363,11 @@ const styles = StyleSheet.create({
   locateBusy: {
     opacity: 0.55,
   },
-  fab: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radius.full,
-    height: 60,
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    width: 60,
-  },
-  fabText: {
-    color: colors.onPrimary,
-    fontSize: 32,
-    fontWeight: '600',
-    lineHeight: 36,
-  },
   hint: {
-    alignItems: 'flex-start',
+    alignItems: 'flex-end',
     bottom: spacing.md,
-    left: 0,
-    paddingLeft: spacing.md,
-    paddingRight: 92,
+    left: spacing.md,
+    paddingRight: 72,
     position: 'absolute',
     right: 0,
   },

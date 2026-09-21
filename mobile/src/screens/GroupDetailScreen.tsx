@@ -418,6 +418,10 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                 <Pressable
                   onLongPress={() => openMessageActions(item)}
                   delayLongPress={400}
+                  style={[
+                    mine ? styles.stackMine : styles.stackTheirs,
+                    (item.reactions ?? []).length > 0 ? styles.stackReacted : null,
+                  ]}
                 >
                   <ChatMediaBlock
                     media={media}
@@ -511,23 +515,26 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                       <Text style={[styles.body, mine ? styles.bodyMine : null]}>{item.body}</Text>
                     </View>
                   ) : null}
+                  {(item.reactions ?? []).length > 0 ? (
+                    <View
+                      style={[styles.reactionBadge, mine ? styles.reactionBadgeMine : styles.reactionBadgeTheirs]}
+                    >
+                      {(item.reactions ?? []).map((reaction) => (
+                        <Pressable
+                          key={reaction.emoji}
+                          onPress={() => void reactTo(item, reaction.emoji)}
+                          hitSlop={4}
+                          accessibilityLabel={`React ${reaction.emoji}`}
+                        >
+                          <Text style={styles.reactionText}>
+                            {reaction.emoji}
+                            {reaction.count > 1 ? ` ${reaction.count}` : ''}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
                 </Pressable>
-                {(item.reactions ?? []).length > 0 ? (
-                  <View style={[styles.reactionRow, mine ? styles.reactionRowMine : null]}>
-                    {(item.reactions ?? []).map((reaction) => (
-                      <Pressable
-                        key={reaction.emoji}
-                        onPress={() => void reactTo(item, reaction.emoji)}
-                        style={[styles.reactionPill, reaction.me ? styles.reactionPillMine : null]}
-                      >
-                        <Text style={styles.reactionText}>
-                          {reaction.emoji}
-                          {reaction.count > 1 ? ` ${reaction.count}` : ''}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                ) : null}
               </View>
               {mine ? (
                 lastInBurst || item.status === 'sending' || item.status === 'failed' ? (
@@ -999,32 +1006,45 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   cluster: {
+    alignItems: 'flex-start',
     maxWidth: '78%',
   },
   clusterMine: {
     alignItems: 'flex-end',
   },
-  reactionRow: {
+  stackTheirs: {
+    alignItems: 'flex-start',
+    overflow: 'visible',
+  },
+  stackMine: {
+    alignItems: 'flex-end',
+    overflow: 'visible',
+  },
+  stackReacted: {
+    paddingBottom: 12,
+  },
+  reactionBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.background,
+    borderRadius: 14,
+    borderWidth: 2,
+    bottom: -4,
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 4,
-    marginTop: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    position: 'absolute',
   },
-  reactionRowMine: {
-    justifyContent: 'flex-end',
+  reactionBadgeTheirs: {
+    left: 8,
   },
-  reactionPill: {
-    backgroundColor: colors.surfaceLight,
-    borderRadius: 12,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  reactionPillMine: {
-    backgroundColor: colors.border,
+  reactionBadgeMine: {
+    right: 8,
   },
   reactionText: {
-    color: colors.text,
-    fontSize: 13,
+    fontSize: 14,
+    lineHeight: 18,
   },
   senderRow: {
     alignItems: 'center',
@@ -1111,9 +1131,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   bubbleMine: {
+    alignSelf: 'flex-end',
     backgroundColor: colors.primary,
   },
   bubbleTheirs: {
+    alignSelf: 'flex-start',
     backgroundColor: colors.surfaceLight,
   },
   bubbleAfterPhoto: {

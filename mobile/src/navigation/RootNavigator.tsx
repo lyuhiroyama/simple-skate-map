@@ -37,7 +37,16 @@ function TabsNavigator() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.surface },
         headerTitleStyle: { color: colors.text, fontWeight: '800' },
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        headerTitleAlign: 'center',
+        tabBarStyle: {
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
+          paddingHorizontal: 48,
+          paddingTop: 8,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 4,
+        },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
       }}
@@ -108,7 +117,10 @@ export function RootNavigator() {
           <Stack.Screen
             name="GroupDetail"
             component={GroupDetailScreen}
-            options={({ route }) => ({ title: route.params.groupName })}
+            options={({ route }) => ({
+              title: route.params.groupName,
+              headerBackButtonDisplayMode: 'minimal',
+            })}
           />
           <Stack.Screen
             name="GroupMedia"
