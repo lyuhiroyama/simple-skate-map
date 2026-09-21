@@ -1,5 +1,6 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -31,6 +32,7 @@ import { useAuth } from '../context/AuthContext';
 import { chatMediaOf, type ChatMedia, type ChatMessage, type Group } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, spacing } from '../theme';
+import { MediaLightbox } from '../components/MediaLightbox';
 
 export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'GroupDetail'>) {
   const { groupId, groupName } = route.params;
@@ -45,23 +47,29 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
   const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [lightbox, setLightbox] = useState<{ items: ChatMedia[]; index: number } | null>(null);
+  const [loading, setLoading] = useState(true);
   const lastOffsetY = useRef(0);
   const nearBottomRef = useRef(true);
 
   const load = useCallback(async () => {
-    const [groupsRes, messagesRes, me] = await Promise.all([
-      api.getGroups(),
-      api.getMessages(groupId),
-      api.getMe(),
-    ]);
-    setGroup(groupsRes.groups.find((g) => g.id === groupId) ?? null);
-    setMyUsername(me.profile.username);
-    setMessages((prev) => {
-      const inFlight = prev.filter((m) => m.status === 'sending' || m.status === 'failed');
-      const incoming = messagesRes.messages.map((m) => ({ ...m, status: 'sent' as const }));
-      const incomingIds = new Set(incoming.map((m) => m.id));
-      return [...incoming, ...inFlight.filter((m) => !incomingIds.has(m.id))];
-    });
+    try {
+      const [groupsRes, messagesRes, me] = await Promise.all([
+        api.getGroups(),
+        api.getMessages(groupId),
+        api.getMe(),
+      ]);
+      setGroup(groupsRes.groups.find((g) => g.id === groupId) ?? null);
+      setMyUsername(me.profile.username);
+      setMessages((prev) => {
+        const inFlight = prev.filter((m) => m.status === 'sending' || m.status === 'failed');
+        const incoming = messagesRes.messages.map((m) => ({ ...m, status: 'sent' as const }));
+        const incomingIds = new Set(incoming.map((m) => m.id));
+        return [...incoming, ...inFlight.filter((m) => !incomingIds.has(m.id))];
+      });
+    } finally {
+      setLoading(false);
+    }
   }, [groupId]);
 
   useFocusEffect(
@@ -282,26 +290,32 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
-          <Text style={styles.empty}>No messages yet. Say what you noticed about a place.</Text>
+          loading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator color={colors.primary} size="large" />
+            </View>
+          ) : (
+            <Text style={styles.empty}>No messages yet. Say what you noticed about a place.</Text>
+          )
         }
         renderItem={({ item, index }) => {
           const mine = item.userId === myId;
           const prev = messages[index - 1];
           const next = messages[index + 1];
-          const firstInGroup = !prev || prev.userId !== item.userId;
-          const lastInGroup = !next || next.userId !== item.userId;
+          const firstInBurst = !inBurst(prev, item);
+          const lastInBurst = !inBurst(item, next);
           const media = chatMediaOf(item);
           return (
             <View
               style={[
                 styles.row,
                 mine ? styles.rowMine : styles.rowTheirs,
-                firstInGroup ? styles.rowFirst : null,
+                firstInBurst ? styles.rowBurst : null,
               ]}
             >
               {mine ? null : (
                 <View style={styles.avatarSlot}>
-                  {lastInGroup ? (
+                  {lastInBurst ? (
                     <View style={styles.avatar}>
                       <Text style={styles.avatarText}>{item.username.slice(0, 1).toUpperCase()}</Text>
                     </View>
@@ -309,25 +323,25 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                 </View>
               )}
               <View style={[styles.cluster, mine ? styles.clusterMine : null]}>
-                {!mine && firstInGroup ? <Text style={styles.sender}>{item.username}</Text> : null}
+                {!mine && firstInBurst ? <Text style={styles.sender}>{item.username}</Text> : null}
                 <Pressable
-                  onLongPress={() => onMessageSafety(item)}
+                  onLongPress={mine ? undefined : () => onMessageSafety(item)}
                   delayLongPress={350}
-                  disabled={mine}
                 >
                   <ChatMediaBlock
                     media={media}
                     mine={mine}
-                    lastInGroup={lastInGroup}
+                    first={firstInBurst}
+                    last={lastInBurst && !item.body}
                     sending={item.status === 'sending'}
+                    onOpen={(opened) => setLightbox({ items: media, index: opened })}
                   />
                   {item.body ? (
                     <View
                       style={[
                         styles.bubble,
                         mine ? styles.bubbleMine : styles.bubbleTheirs,
-                        mine && lastInGroup && media.length === 0 ? styles.bubbleMineTail : null,
-                        !mine && lastInGroup && media.length === 0 ? styles.bubbleTheirsTail : null,
+                        cornerStyle(mine, !media.length && firstInBurst, lastInBurst),
                         media.length > 0 ? styles.bubbleAfterPhoto : null,
                       ]}
                     >
@@ -336,7 +350,13 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                   ) : null}
                 </Pressable>
               </View>
-              {mine ? <SendReceipt status={item.status} /> : null}
+              {mine ? (
+                lastInBurst || item.status === 'sending' || item.status === 'failed' ? (
+                  <SendReceipt status={item.status} />
+                ) : (
+                  <View style={styles.receipt} />
+                )
+              ) : null}
             </View>
           );
         }}
@@ -389,6 +409,12 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
           </View>
         </View>
       </Modal>
+
+      <MediaLightbox
+        items={lightbox?.items ?? null}
+        index={lightbox?.index ?? 0}
+        onClose={() => setLightbox(null)}
+      />
 
       <View style={[styles.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
         {pendingMedia.length > 0 ? (
@@ -483,35 +509,75 @@ const ALBUM_SIZE = 220;
 const ALBUM_GAP = 2;
 const ALBUM_HALF = (ALBUM_SIZE - ALBUM_GAP) / 2;
 
+const BURST_MS = 60_000;
+const BUBBLE_ROUND = 18;
+const BUBBLE_STACK = 8;
+
+function inBurst(a?: ChatMessage, b?: ChatMessage) {
+  if (!a || !b || a.userId !== b.userId) return false;
+  return Math.abs(Date.parse(a.createdAt) - Date.parse(b.createdAt)) < BURST_MS;
+}
+
+function cornerStyle(mine: boolean, first: boolean, last: boolean) {
+  if (mine) {
+    return {
+      borderTopLeftRadius: BUBBLE_ROUND,
+      borderBottomLeftRadius: BUBBLE_ROUND,
+      borderTopRightRadius: first ? BUBBLE_ROUND : BUBBLE_STACK,
+      borderBottomRightRadius: last ? BUBBLE_ROUND : BUBBLE_STACK,
+    };
+  }
+  return {
+    borderTopRightRadius: BUBBLE_ROUND,
+    borderBottomRightRadius: BUBBLE_ROUND,
+    borderTopLeftRadius: first ? BUBBLE_ROUND : BUBBLE_STACK,
+    borderBottomLeftRadius: last ? BUBBLE_ROUND : BUBBLE_STACK,
+  };
+}
+
 function ChatMediaBlock({
   media,
   mine,
-  lastInGroup,
+  first,
+  last,
   sending,
+  onOpen,
 }: {
   media: ChatMedia[];
   mine: boolean;
-  lastInGroup: boolean;
+  first: boolean;
+  last: boolean;
   sending: boolean;
+  onOpen: (index: number) => void;
 }) {
   if (media.length === 0) return null;
-  const tail = lastInGroup ? (mine ? styles.photoMineTail : styles.photoTheirsTail) : null;
   const sendingStyle = sending ? styles.photoSending : null;
   if (media.length === 1) {
     const item = media[0];
-    if (item.mediaType === 'video') {
-      return (
-        <View style={[styles.album, tail, sendingStyle]}>
-          <ChatVideo url={item.url} style={styles.photo} controls />
-        </View>
-      );
-    }
-    return <Image source={{ uri: item.url }} style={[styles.photo, tail, sendingStyle]} />;
+    return (
+      <Pressable
+        onPress={() => onOpen(0)}
+        style={[styles.album, cornerStyle(mine, first, last), sendingStyle]}
+      >
+        {item.mediaType === 'video' ? (
+          <>
+            <View pointerEvents="none">
+              <ChatVideo url={item.url} style={styles.photo} />
+            </View>
+            <View style={styles.playBadge} pointerEvents="none">
+              <Ionicons name="play" size={22} color="#fff" />
+            </View>
+          </>
+        ) : (
+          <Image source={{ uri: item.url }} style={styles.photo} />
+        )}
+      </Pressable>
+    );
   }
   const visible = media.slice(0, 4);
   const extra = media.length - visible.length;
   return (
-    <View style={[styles.album, tail, sendingStyle]}>
+    <View style={[styles.album, cornerStyle(mine, first, last), sendingStyle]}>
       <View style={styles.albumGrid}>
         {visible.map((item, index) => {
           const isLastVisible = index === visible.length - 1;
@@ -523,6 +589,7 @@ function ChatMediaBlock({
               extra={isLastVisible && extra > 0 ? extra : 0}
               width={wide ? ALBUM_SIZE : ALBUM_HALF}
               height={ALBUM_HALF}
+              onPress={() => onOpen(index)}
             />
           );
         })}
@@ -536,19 +603,23 @@ function ChatAlbumTile({
   extra,
   width,
   height,
+  onPress,
 }: {
   item: ChatMedia;
   extra: number;
   width: number;
   height: number;
+  onPress: () => void;
 }) {
   return (
-    <View style={{ height, width }}>
-      {item.mediaType === 'video' ? (
-        <ChatVideo url={item.url} style={styles.albumFill} />
-      ) : (
-        <Image source={{ uri: item.url }} style={styles.albumFill} />
-      )}
+    <Pressable onPress={onPress} style={{ height, width }}>
+      <View pointerEvents="none" style={styles.albumFill}>
+        {item.mediaType === 'video' ? (
+          <ChatVideo url={item.url} style={styles.albumFill} />
+        ) : (
+          <Image source={{ uri: item.url }} style={styles.albumFill} />
+        )}
+      </View>
       {item.mediaType === 'video' && extra === 0 ? (
         <View style={styles.playBadge} pointerEvents="none">
           <Ionicons name="play" size={16} color="#fff" />
@@ -559,25 +630,21 @@ function ChatAlbumTile({
           <Text style={styles.extraText}>+{extra}</Text>
         </View>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 
 function ChatVideo({
   url,
   style,
-  controls = false,
 }: {
   url: string;
   style: StyleProp<ViewStyle>;
-  controls?: boolean;
 }) {
   const player = useVideoPlayer(url, (p) => {
     p.loop = false;
   });
-  return (
-    <VideoView player={player} style={style} contentFit="cover" nativeControls={controls} />
-  );
+  return <VideoView player={player} style={style} contentFit="cover" nativeControls={false} />;
 }
 
 const styles = StyleSheet.create({
@@ -601,14 +668,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     textAlign: 'center',
   },
+  loading: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+  },
   row: {
     alignItems: 'flex-end',
     flexDirection: 'row',
     marginTop: 2,
     maxWidth: '100%',
   },
-  rowFirst: {
-    marginTop: 12,
+  rowBurst: {
+    marginTop: 10,
   },
   rowMine: {
     justifyContent: 'flex-end',
@@ -647,22 +718,14 @@ const styles = StyleSheet.create({
   },
   photo: {
     backgroundColor: colors.surface,
-    borderRadius: 18,
     height: 220,
     width: 220,
-  },
-  photoMineTail: {
-    borderBottomRightRadius: 6,
-  },
-  photoTheirsTail: {
-    borderBottomLeftRadius: 6,
   },
   photoSending: {
     opacity: 0.72,
   },
   album: {
     backgroundColor: colors.surface,
-    borderRadius: 18,
     overflow: 'hidden',
     width: ALBUM_SIZE,
   },
@@ -728,17 +791,9 @@ const styles = StyleSheet.create({
   },
   bubbleMine: {
     backgroundColor: colors.primary,
-    borderRadius: 20,
   },
   bubbleTheirs: {
     backgroundColor: colors.surfaceLight,
-    borderRadius: 20,
-  },
-  bubbleMineTail: {
-    borderBottomRightRadius: 6,
-  },
-  bubbleTheirsTail: {
-    borderBottomLeftRadius: 6,
   },
   bubbleAfterPhoto: {
     marginTop: 6,

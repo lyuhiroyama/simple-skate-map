@@ -155,7 +155,7 @@ export function GroupsScreen() {
             value={inviteCode}
             onChangeText={setInviteCode}
             autoCapitalize="none"
-            placeholder="e.g. TOKYO1"
+            placeholder="Paste code"
           />
           <Button title="Join group" variant="secondary" onPress={joinGroup} loading={busy} />
           <View style={styles.sectionTitleRow}>
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     gap: spacing.sm,
     padding: spacing.lg,
-    paddingBottom: spacing.xl * 3,
+    paddingBottom: spacing.lg,
   },
   header: {
     gap: spacing.md,
@@ -350,8 +350,7 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: 'center',
     gap: spacing.xs,
-    marginTop: 'auto',
-    paddingTop: spacing.xl * 2,
+    paddingTop: spacing.md,
   },
   footerRow: {
     alignItems: 'center',
