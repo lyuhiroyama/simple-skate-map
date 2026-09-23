@@ -118,11 +118,13 @@ export function RootNavigator() {
     <NavigationContainer theme={theme}>
       {session ? (
         <Stack.Navigator
-          screenOptions={{
+          screenOptions={({ navigation }) => ({
             headerStyle: { backgroundColor: colors.surface },
             headerTintColor: colors.text,
             headerTitleStyle: { fontWeight: '800' },
-          }}
+            headerBackButtonDisplayMode: 'minimal',
+            unstable_headerLeftItems: iosPlainBackItems(() => navigation.goBack()),
+          })}
         >
           <Stack.Screen name="Tabs" component={TabsNavigator} options={{ headerShown: false }} />
           <Stack.Screen
@@ -130,7 +132,6 @@ export function RootNavigator() {
             component={SpotDetailScreen}
             options={({ route }) => ({
               title: route.params.spotName,
-              headerBackButtonDisplayMode: 'minimal',
             })}
           />
           <Stack.Screen
@@ -145,20 +146,14 @@ export function RootNavigator() {
           <Stack.Screen
             name="GroupDetail"
             component={GroupDetailScreen}
-            options={({ route, navigation }) => ({
+            options={({ route }) => ({
               title: route.params.groupName,
-              headerBackButtonDisplayMode: 'minimal',
-              unstable_headerLeftItems: iosPlainBackItems(() => navigation.goBack()),
             })}
           />
           <Stack.Screen
             name="GroupMedia"
             component={GroupMediaScreen}
-            options={({ navigation }) => ({
-              title: 'Media',
-              headerBackButtonDisplayMode: 'minimal',
-              unstable_headerLeftItems: iosPlainBackItems(() => navigation.goBack()),
-            })}
+            options={{ title: 'Media' }}
           />
           <Stack.Screen
             name="Legal"

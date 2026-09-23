@@ -15,7 +15,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
 import { hapticClick } from '../lib/haptics';
-import { afterDismiss, blockedNotice, confirmBlock, showReportBlockSheet } from '../lib/safety';
+import { blockedNotice, confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
 import { chatMediaOf } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -154,11 +154,30 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
         index={lightboxIndex ?? 0}
         myId={myId}
         onClose={() => setLightboxIndex(null)}
-        onSafety={(target) => {
-          const tile = items.find((item) => item.messageId === target.messageId && item.url === target.url);
-          setLightboxIndex(null);
-          if (tile) afterDismiss(() => onTileSafety(tile));
+        onReport={(item, reason) => {
+          void (async () => {
+            try {
+              await api.report({ contentType: 'message', contentId: item.messageId!, reason });
+              setItems((prev) => prev.filter((m) => m.messageId !== item.messageId));
+              setLightboxIndex(null);
+              Alert.alert('Reported', 'Thanks. You will not see this.');
+            } catch (e) {
+              Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
+            }
+          })();
         }}
+        onBlock={(item) =>
+          confirmBlock(item.username ?? 'this person', async () => {
+            try {
+              await api.blockUser(item.userId!);
+              setItems((prev) => prev.filter((m) => m.userId !== item.userId));
+              setLightboxIndex(null);
+              blockedNotice();
+            } catch (e) {
+              Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
+            }
+          })
+        }
       />
     </>
   );

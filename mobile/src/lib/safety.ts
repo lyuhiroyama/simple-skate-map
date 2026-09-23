@@ -8,6 +8,7 @@ const REASONS = [
 ] as const;
 
 export type ReportReason = (typeof REASONS)[number]['id'];
+export const REPORT_REASONS = REASONS;
 
 /** iOS drops ActionSheets presented while a Modal is still dismissing. */
 export function afterDismiss(fn: () => void) {

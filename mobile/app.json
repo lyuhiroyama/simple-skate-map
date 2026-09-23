@@ -24,6 +24,8 @@
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
+        "CFBundleDisplayName": "SkateMap",
+        "CFBundleName": "SkateMap",
         "NSLocationWhenInUseUsageDescription": "Your location is used to show nearby places your group has documented on the map.",
         "NSPhotoLibraryUsageDescription": "Photo library access lets you attach photos and videos of places you document.",
         "NSCameraUsageDescription": "Camera access lets you photograph places you document.",
