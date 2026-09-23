@@ -154,30 +154,10 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
         index={lightboxIndex ?? 0}
         myId={myId}
         onClose={() => setLightboxIndex(null)}
-        onReport={(item, reason) => {
-          void (async () => {
-            try {
-              await api.report({ contentType: 'message', contentId: item.messageId!, reason });
-              setItems((prev) => prev.filter((m) => m.messageId !== item.messageId));
-              setLightboxIndex(null);
-              Alert.alert('Reported', 'Thanks. You will not see this.');
-            } catch (e) {
-              Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
-            }
-          })();
+        onSafety={(target) => {
+          const tile = items.find((item) => item.messageId === target.messageId && item.url === target.url);
+          if (tile) onTileSafety(tile);
         }}
-        onBlock={(item) =>
-          confirmBlock(item.username ?? 'this person', async () => {
-            try {
-              await api.blockUser(item.userId!);
-              setItems((prev) => prev.filter((m) => m.userId !== item.userId));
-              setLightboxIndex(null);
-              blockedNotice();
-            } catch (e) {
-              Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
-            }
-          })
-        }
       />
     </>
   );

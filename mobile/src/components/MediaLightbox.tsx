@@ -23,7 +23,6 @@ import {
 } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { hapticClick } from '../lib/haptics';
-import { REPORT_REASONS, type ReportReason } from '../lib/safety';
 import type { ChatMedia } from '../types';
 import { colors } from '../theme';
 
@@ -43,16 +42,12 @@ export function MediaLightbox({
   myId,
   onClose,
   onSafety,
-  onReport,
-  onBlock,
 }: {
   items: LightboxItem[] | null;
   index: number;
   myId?: string;
   onClose: () => void;
   onSafety?: (item: LightboxItem) => void;
-  onReport?: (item: LightboxItem, reason: ReportReason) => void;
-  onBlock?: (item: LightboxItem) => void;
 }) {
   const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList<LightboxItem>>(null);
@@ -61,8 +56,6 @@ export function MediaLightbox({
   const open = items != null && items.length > 0;
   const [page, setPage] = useState(index);
   const [dragging, setDragging] = useState(false);
-  const [safetyMenu, setSafetyMenu] = useState<'closed' | 'actions' | 'reasons'>('closed');
-  const [safetyItem, setSafetyItem] = useState<LightboxItem | null>(null);
 
   onCloseRef.current = onClose;
 
@@ -70,8 +63,6 @@ export function MediaLightbox({
     dragY.setValue(0);
     setPage(index);
     setDragging(false);
-    setSafetyMenu('closed');
-    setSafetyItem(null);
   }, [index, items, dragY]);
 
   const onGestureEvent = Animated.event<PanGestureHandlerGestureEvent>(
@@ -133,10 +124,7 @@ export function MediaLightbox({
 
   const current = items[Math.max(0, Math.min(page, items.length - 1))];
   const canReport = Boolean(
-    current?.userId &&
-      current.userId !== myId &&
-      current.messageId &&
-      (onReport || onBlock || onSafety),
+    onSafety && current?.userId && current.userId !== myId && current.messageId,
   );
 
   return (
@@ -209,11 +197,6 @@ export function MediaLightbox({
                 onPress={() => {
                   if (!current) return;
                   hapticClick();
-                  if (onReport || onBlock) {
-                    setSafetyItem(current);
-                    setSafetyMenu('actions');
-                    return;
-                  }
                   onSafety?.(current);
                 }}
                 hitSlop={12}
@@ -226,71 +209,6 @@ export function MediaLightbox({
               <View style={styles.close} />
             )}
           </Animated.View>
-          {safetyMenu !== 'closed' && safetyItem ? (
-            <View style={styles.safetyRoot} pointerEvents="box-none">
-              <Pressable style={styles.safetyDim} onPress={() => setSafetyMenu('closed')} />
-              <View style={[styles.safetySheet, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-                {safetyMenu === 'actions' ? (
-                  <>
-                    {onReport ? (
-                      <Pressable
-                        onPress={() => setSafetyMenu('reasons')}
-                        style={styles.safetyRow}
-                        accessibilityLabel="Report"
-                      >
-                        <Text style={styles.safetyLabel}>Report</Text>
-                      </Pressable>
-                    ) : null}
-                    {onBlock ? (
-                      <Pressable
-                        onPress={() => {
-                          const target = safetyItem;
-                          setSafetyMenu('closed');
-                          onBlock(target);
-                        }}
-                        style={styles.safetyRow}
-                        accessibilityLabel="Block"
-                      >
-                        <Text style={styles.safetyDanger}>Block</Text>
-                      </Pressable>
-                    ) : null}
-                    <Pressable
-                      onPress={() => setSafetyMenu('closed')}
-                      style={styles.safetyRow}
-                      accessibilityLabel="Cancel"
-                    >
-                      <Text style={styles.safetyMuted}>Cancel</Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.safetyTitle}>Why are you reporting this?</Text>
-                    {REPORT_REASONS.map((reason) => (
-                      <Pressable
-                        key={reason.id}
-                        onPress={() => {
-                          const target = safetyItem;
-                          setSafetyMenu('closed');
-                          onReport?.(target, reason.id);
-                        }}
-                        style={styles.safetyRow}
-                        accessibilityLabel={reason.label}
-                      >
-                        <Text style={styles.safetyLabel}>{reason.label}</Text>
-                      </Pressable>
-                    ))}
-                    <Pressable
-                      onPress={() => setSafetyMenu('closed')}
-                      style={styles.safetyRow}
-                      accessibilityLabel="Cancel"
-                    >
-                      <Text style={styles.safetyMuted}>Cancel</Text>
-                    </Pressable>
-                  </>
-                )}
-              </View>
-            </View>
-          ) : null}
         </Animated.View>
       </GestureHandlerRootView>
     </Modal>
@@ -425,43 +343,5 @@ const styles = StyleSheet.create({
   },
   countSpacer: {
     width: 44,
-  },
-  safetyRoot: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-  },
-  safetyDim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  safetySheet: {
-    backgroundColor: colors.surfaceLight,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    overflow: 'hidden',
-    paddingTop: 8,
-  },
-  safetyTitle: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  safetyRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  safetyLabel: {
-    color: colors.text,
-    fontSize: 17,
-  },
-  safetyDanger: {
-    color: colors.danger,
-    fontSize: 17,
-  },
-  safetyMuted: {
-    color: colors.textMuted,
-    fontSize: 17,
   },
 });
