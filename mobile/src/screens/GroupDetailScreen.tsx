@@ -36,7 +36,7 @@ import { chatMediaOf, type ChatMedia, type ChatMessage, type Group, type GroupMe
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, spacing } from '../theme';
 import { MediaLightbox, type LightboxItem } from '../components/MediaLightbox';
-import { MessageActionsSheet } from '../components/MessageActionsSheet';
+import { MessageActionsSheet, type MessageAnchor } from '../components/MessageActionsSheet';
 
 export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'GroupDetail'>) {
   const { groupId, groupName } = route.params;
@@ -56,6 +56,8 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
   const [membersLoading, setMembersLoading] = useState(false);
   const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; index: number } | null>(null);
   const [actionsFor, setActionsFor] = useState<ChatMessage | null>(null);
+  const [actionsAnchor, setActionsAnchor] = useState<MessageAnchor | null>(null);
+  const bubbleRefs = useRef(new Map<string, View>());
   const [loading, setLoading] = useState(true);
   const lastOffsetY = useRef(0);
   const nearBottomRef = useRef(true);
@@ -313,10 +315,25 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
 
   const myId = session?.user.id;
 
+  const closeMessageActions = () => {
+    setActionsFor(null);
+    setActionsAnchor(null);
+  };
+
   const openMessageActions = (item: ChatMessage) => {
     if (item.status === 'sending' || item.status === 'failed') return;
+    Keyboard.dismiss();
     hapticClick();
-    setActionsFor(item);
+    const node = bubbleRefs.current.get(item.id);
+    if (!node) {
+      setActionsAnchor(null);
+      setActionsFor(item);
+      return;
+    }
+    node.measureInWindow((x, y, width, height) => {
+      setActionsAnchor({ x, y, width, height });
+      setActionsFor(item);
+    });
   };
 
   const reportMessage = (item: ChatMessage) => {
@@ -358,6 +375,10 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
       Alert.alert('Could not react', e instanceof Error ? e.message : 'Unknown error');
     }
   };
+
+  const actionsIndex = actionsFor ? messages.findIndex((m) => m.id === actionsFor.id) : -1;
+  const actionsFirst = actionsIndex < 0 || !inBurst(messages[actionsIndex - 1], actionsFor ?? undefined);
+  const actionsLast = actionsIndex < 0 || !inBurst(actionsFor ?? undefined, messages[actionsIndex + 1]);
 
   return (
     <KeyboardAvoidingView
@@ -415,127 +436,46 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
                 {!mine && firstInBurst ? (
                   <Text style={styles.sender}>{item.username}</Text>
                 ) : null}
-                <Pressable
-                  onLongPress={() => openMessageActions(item)}
-                  delayLongPress={400}
-                  style={[
-                    mine ? styles.stackMine : styles.stackTheirs,
-                    (item.reactions ?? []).length > 0 ? styles.stackReacted : null,
-                  ]}
+                <View
+                  collapsable={false}
+                  style={actionsFor?.id === item.id ? styles.hiddenBubble : null}
+                  ref={(node) => {
+                    if (node) bubbleRefs.current.set(item.id, node);
+                    else bubbleRefs.current.delete(item.id);
+                  }}
                 >
-                  <ChatMediaBlock
-                    media={media}
-                    mine={mine}
-                    first={firstInBurst}
-                    last={lastInBurst && !item.body && !item.spot}
-                    sending={item.status === 'sending'}
-                    onLongPress={() => openMessageActions(item)}
-                    onOpen={(opened) =>
-                      setLightbox({
-                        items: media.map((entry) => ({
-                          ...entry,
-                          messageId: item.id,
-                          userId: item.userId,
-                          username: item.username,
-                        })),
-                        index: opened,
-                      })
-                    }
-                  />
-                  {item.spot ? (
-                    <Pressable
-                      onPress={() =>
-                        navigation.navigate('SpotDetail', {
-                          spotId: item.spot!.id,
-                          spotName: item.spot!.name,
+                  <Pressable onLongPress={() => openMessageActions(item)} delayLongPress={400}>
+                    <ChatMessageVisual
+                      item={item}
+                      mine={mine}
+                      firstInBurst={firstInBurst}
+                      lastInBurst={lastInBurst}
+                      sending={item.status === 'sending'}
+                      onLongPress={() => openMessageActions(item)}
+                      onOpen={(opened) =>
+                        setLightbox({
+                          items: media.map((entry) => ({
+                            ...entry,
+                            messageId: item.id,
+                            userId: item.userId,
+                            username: item.username,
+                          })),
+                          index: opened,
                         })
                       }
-                      onLongPress={() => openMessageActions(item)}
-                      delayLongPress={400}
-                      style={[
-                        styles.spotCard,
-                        mine ? styles.spotCardMine : null,
-                        item.spot.media ? styles.spotCardWithMedia : null,
-                        cornerStyle(mine, media.length === 0 && firstInBurst, lastInBurst && !item.body),
-                        media.length > 0 ? styles.bubbleAfterPhoto : null,
-                      ]}
-                    >
-                      {item.spot.media ? (
-                        <View style={styles.spotPreview}>
-                          <View pointerEvents="none" style={styles.spotPreviewFill}>
-                            {item.spot.media.mediaType === 'video' ? (
-                              <ChatVideo url={item.spot.media.url} style={styles.spotPreviewFill} />
-                            ) : (
-                              <Image
-                                source={{ uri: item.spot.media.url }}
-                                style={styles.spotPreviewFill}
-                              />
-                            )}
-                          </View>
-                          {item.spot.media.mediaType === 'video' ? (
-                            <View style={styles.playBadge} pointerEvents="none">
-                              <Ionicons name="play" size={22} color="#fff" />
-                            </View>
-                          ) : null}
-                        </View>
-                      ) : (
-                        <Ionicons
-                          name="location-outline"
-                          size={18}
-                          color={mine ? colors.onPrimary : colors.primary}
-                        />
-                      )}
-                      <View style={styles.spotCardMeta}>
-                        <Text
-                          style={[styles.spotCardName, mine ? styles.spotCardNameMine : null]}
-                          numberOfLines={2}
-                        >
-                          {item.spot.name}
-                        </Text>
-                        {item.spot.address ? (
-                          <Text
-                            style={[styles.spotCardAddress, mine ? styles.spotCardAddressMine : null]}
-                            numberOfLines={2}
-                          >
-                            {item.spot.address}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </Pressable>
-                  ) : null}
-                  {item.body ? (
-                    <View
-                      style={[
-                        styles.bubble,
-                        mine ? styles.bubbleMine : styles.bubbleTheirs,
-                        (item.reactions ?? []).length > 0 ? styles.bubbleReacted : null,
-                        cornerStyle(mine, !media.length && !item.spot && firstInBurst, lastInBurst),
-                        media.length > 0 || item.spot ? styles.bubbleAfterPhoto : null,
-                      ]}
-                    >
-                      <Text style={[styles.body, mine ? styles.bodyMine : null]}>{item.body}</Text>
-                    </View>
-                  ) : null}
-                  {(item.reactions ?? []).length > 0 ? (
-                    <View
-                      style={[styles.reactionBadge, mine ? styles.reactionBadgeMine : styles.reactionBadgeTheirs]}
-                    >
-                      {(item.reactions ?? []).map((reaction) => (
-                        <Pressable
-                          key={reaction.emoji}
-                          onPress={() => void reactTo(item, reaction.emoji)}
-                          hitSlop={4}
-                          accessibilityLabel={`React ${reaction.emoji}`}
-                        >
-                          <Text style={styles.reactionText}>
-                            {reaction.emoji}
-                            {reaction.count > 1 ? ` ${reaction.count}` : ''}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ) : null}
-                </Pressable>
+                      onSpotPress={
+                        item.spot
+                          ? () =>
+                              navigation.navigate('SpotDetail', {
+                                spotId: item.spot!.id,
+                                spotName: item.spot!.name,
+                              })
+                          : undefined
+                      }
+                      onReact={(emoji) => void reactTo(item, emoji)}
+                    />
+                  </Pressable>
+                </View>
               </View>
               {mine ? (
                 lastInBurst || item.status === 'sending' || item.status === 'failed' ? (
@@ -659,7 +599,10 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
           if (msg) {
             hapticClick();
             setLightbox(null);
-            afterDismiss(() => setActionsFor(msg));
+            afterDismiss(() => {
+              setActionsAnchor(null);
+              setActionsFor(msg);
+            });
           }
         }}
       />
@@ -668,25 +611,36 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         mine={actionsFor?.userId === myId}
         canCopy={Boolean(actionsFor?.body)}
         myEmoji={actionsFor?.reactions?.find((r) => r.me)?.emoji}
-        onClose={() => setActionsFor(null)}
+        anchor={actionsAnchor}
+        preview={
+          actionsFor ? (
+            <ChatMessageVisual
+              item={actionsFor}
+              mine={actionsFor.userId === myId}
+              firstInBurst={actionsFirst}
+              lastInBurst={actionsLast}
+            />
+          ) : null
+        }
+        onClose={closeMessageActions}
         onReact={(emoji) => {
           if (!actionsFor) return;
           const target = actionsFor;
-          setActionsFor(null);
+          closeMessageActions();
           void reactTo(target, emoji);
         }}
         onCopy={() => {
           if (actionsFor?.body) void Clipboard.setStringAsync(actionsFor.body);
-          setActionsFor(null);
+          closeMessageActions();
         }}
         onReport={() => {
           const target = actionsFor;
-          setActionsFor(null);
+          closeMessageActions();
           if (target) afterDismiss(() => reportMessage(target));
         }}
         onBlock={() => {
           const target = actionsFor;
-          setActionsFor(null);
+          closeMessageActions();
           if (target) afterDismiss(() => blockSender(target));
         }}
       />
@@ -818,6 +772,128 @@ function cornerStyle(mine: boolean, first: boolean, last: boolean) {
     borderTopLeftRadius: first ? BUBBLE_ROUND : BUBBLE_STACK,
     borderBottomLeftRadius: last ? BUBBLE_ROUND : BUBBLE_STACK,
   };
+}
+
+function ChatMessageVisual({
+  item,
+  mine,
+  firstInBurst,
+  lastInBurst,
+  sending,
+  onOpen,
+  onLongPress,
+  onSpotPress,
+  onReact,
+}: {
+  item: ChatMessage;
+  mine: boolean;
+  firstInBurst: boolean;
+  lastInBurst: boolean;
+  sending?: boolean;
+  onOpen?: (index: number) => void;
+  onLongPress?: () => void;
+  onSpotPress?: () => void;
+  onReact?: (emoji: string) => void;
+}) {
+  const media = chatMediaOf(item);
+  return (
+    <View
+      style={[
+        mine ? styles.stackMine : styles.stackTheirs,
+        (item.reactions ?? []).length > 0 ? styles.stackReacted : null,
+      ]}
+    >
+      <ChatMediaBlock
+        media={media}
+        mine={mine}
+        first={firstInBurst}
+        last={lastInBurst && !item.body && !item.spot}
+        sending={Boolean(sending)}
+        onLongPress={onLongPress}
+        onOpen={(opened) => onOpen?.(opened)}
+      />
+      {item.spot ? (
+        <Pressable
+          onPress={onSpotPress}
+          onLongPress={onLongPress}
+          delayLongPress={400}
+          style={[
+            styles.spotCard,
+            mine ? styles.spotCardMine : null,
+            item.spot.media ? styles.spotCardWithMedia : null,
+            cornerStyle(mine, media.length === 0 && firstInBurst, lastInBurst && !item.body),
+            media.length > 0 ? styles.bubbleAfterPhoto : null,
+          ]}
+        >
+          {item.spot.media ? (
+            <View style={styles.spotPreview}>
+              <View pointerEvents="none" style={styles.spotPreviewFill}>
+                {item.spot.media.mediaType === 'video' ? (
+                  <ChatVideo url={item.spot.media.url} style={styles.spotPreviewFill} />
+                ) : (
+                  <Image source={{ uri: item.spot.media.url }} style={styles.spotPreviewFill} />
+                )}
+              </View>
+              {item.spot.media.mediaType === 'video' ? (
+                <View style={styles.playBadge} pointerEvents="none">
+                  <Ionicons name="play" size={22} color="#fff" />
+                </View>
+              ) : null}
+            </View>
+          ) : (
+            <Ionicons
+              name="location-outline"
+              size={18}
+              color={mine ? colors.onPrimary : colors.primary}
+            />
+          )}
+          <View style={styles.spotCardMeta}>
+            <Text style={[styles.spotCardName, mine ? styles.spotCardNameMine : null]} numberOfLines={2}>
+              {item.spot.name}
+            </Text>
+            {item.spot.address ? (
+              <Text
+                style={[styles.spotCardAddress, mine ? styles.spotCardAddressMine : null]}
+                numberOfLines={2}
+              >
+                {item.spot.address}
+              </Text>
+            ) : null}
+          </View>
+        </Pressable>
+      ) : null}
+      {item.body ? (
+        <View
+          style={[
+            styles.bubble,
+            mine ? styles.bubbleMine : styles.bubbleTheirs,
+            (item.reactions ?? []).length > 0 ? styles.bubbleReacted : null,
+            cornerStyle(mine, !media.length && !item.spot && firstInBurst, lastInBurst),
+            media.length > 0 || item.spot ? styles.bubbleAfterPhoto : null,
+          ]}
+        >
+          <Text style={[styles.body, mine ? styles.bodyMine : null]}>{item.body}</Text>
+        </View>
+      ) : null}
+      {(item.reactions ?? []).length > 0 ? (
+        <View style={[styles.reactionBadge, mine ? styles.reactionBadgeMine : styles.reactionBadgeTheirs]}>
+          {(item.reactions ?? []).map((reaction) => (
+            <Pressable
+              key={reaction.emoji}
+              onPress={() => onReact?.(reaction.emoji)}
+              hitSlop={4}
+              accessibilityLabel={`React ${reaction.emoji}`}
+            >
+              <Text style={styles.reactionText}>
+                {reaction.emoji}
+                {reaction.count > 1 ? ` ${reaction.count}` : ''}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 function ChatMediaBlock({
@@ -1013,6 +1089,9 @@ const styles = StyleSheet.create({
   stackMine: {
     alignItems: 'flex-end',
     overflow: 'visible',
+  },
+  hiddenBubble: {
+    opacity: 0,
   },
   stackReacted: {
     paddingBottom: 12,

@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
+import { openAddressInGoogleMaps } from '../lib/maps';
 import { blockedNotice, confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
 import { Button, EmptyState } from '../components/ui';
@@ -235,7 +236,13 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
       {spot.address ? (
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Address</Text>
-          <Text style={styles.sectionText}>{spot.address}</Text>
+          <Pressable
+            onPress={() => void openAddressInGoogleMaps(spot.address)}
+            accessibilityRole="link"
+            accessibilityLabel={`Open ${spot.address} in Google Maps`}
+          >
+            <Text style={styles.addressLink}>{spot.address}</Text>
+          </Pressable>
         </View>
       ) : null}
 
@@ -444,6 +451,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
     lineHeight: 22,
+  },
+  addressLink: {
+    color: colors.selected,
+    fontSize: 15,
+    lineHeight: 22,
+    textDecorationLine: 'underline',
   },
   mediaStrip: {
     marginTop: spacing.xs,

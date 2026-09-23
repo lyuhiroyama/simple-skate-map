@@ -142,6 +142,8 @@ export function GroupsScreen() {
       contentContainerStyle={styles.content}
       data={groups}
       keyExtractor={(g) => g.id}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />
       }
