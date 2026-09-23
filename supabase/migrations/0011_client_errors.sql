@@ -1,4 +1,9 @@
 -- Client-side error log for diagnosing user reports. Service role only.
+-- Do not grant anon/authenticated — the phone never queries this table.
+-- Express inserts via service_role (POST /client-errors).
+--
+-- Oct 2026 Data API change: new public tables need an explicit GRANT
+-- in the same migration. Existing tables keep their current grants.
 
 create table public.client_errors (
   id uuid primary key default gen_random_uuid(),

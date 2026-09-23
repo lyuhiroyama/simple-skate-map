@@ -17,8 +17,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   GestureHandlerRootView,
+  NativeViewGestureHandler,
   PanGestureHandler,
   State,
+  TapGestureHandler,
   type PanGestureHandlerGestureEvent,
   type PanGestureHandlerStateChangeEvent,
 } from 'react-native-gesture-handler';
@@ -30,6 +32,7 @@ import { colors } from '../theme';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const DISMISS_Y = 90;
 const DISMISS_V = 900;
+const CHROME_MS = 320;
 
 export type LightboxItem = ChatMedia & {
   messageId?: string;
@@ -52,19 +55,41 @@ export function MediaLightbox({
 }) {
   const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList<LightboxItem>>(null);
+  const panRef = useRef<PanGestureHandler>(null);
+  const nativeRef = useRef<NativeViewGestureHandler>(null);
   const onCloseRef = useRef(onClose);
   const dragY = useRef(new Animated.Value(0)).current;
+  const chromeShown = useRef(new Animated.Value(1)).current;
   const open = items != null && items.length > 0;
   const [page, setPage] = useState(index);
   const [dragging, setDragging] = useState(false);
+  const [chromeOn, setChromeOn] = useState(true);
+  const chromeOnRef = useRef(true);
+  const draggingRef = useRef(false);
 
   onCloseRef.current = onClose;
 
   useEffect(() => {
     dragY.setValue(0);
+    chromeShown.setValue(1);
     setPage(index);
     setDragging(false);
-  }, [index, items, dragY]);
+    draggingRef.current = false;
+    setChromeOn(true);
+    chromeOnRef.current = true;
+  }, [index, items, dragY, chromeShown]);
+
+  const toggleChrome = () => {
+    if (draggingRef.current) return;
+    const next = !chromeOnRef.current;
+    chromeOnRef.current = next;
+    setChromeOn(next);
+    Animated.timing(chromeShown, {
+      toValue: next ? 1 : 0,
+      duration: CHROME_MS,
+      useNativeDriver: true,
+    }).start();
+  };
 
   const onGestureEvent = Animated.event<PanGestureHandlerGestureEvent>(
     [{ nativeEvent: { translationY: dragY } }],
@@ -73,7 +98,8 @@ export function MediaLightbox({
 
   const onHandlerStateChange = (e: PanGestureHandlerStateChangeEvent) => {
     const { state, translationY, velocityY } = e.nativeEvent;
-    if (state === State.BEGAN || state === State.ACTIVE) {
+    if (state === State.ACTIVE) {
+      draggingRef.current = true;
       setDragging(true);
       return;
     }
@@ -87,11 +113,13 @@ export function MediaLightbox({
         useNativeDriver: true,
       }).start(() => {
         dragY.setValue(0);
+        draggingRef.current = false;
         setDragging(false);
         onCloseRef.current();
       });
       return;
     }
+    draggingRef.current = false;
     setDragging(false);
     Animated.spring(dragY, {
       toValue: 0,
@@ -115,11 +143,12 @@ export function MediaLightbox({
     outputRange: [1, 0.88],
     extrapolate: 'clamp',
   });
-  const chromeOpacity = dragY.interpolate({
+  const dragChrome = dragY.interpolate({
     inputRange: [0, 80],
     outputRange: [1, 0],
     extrapolate: 'clamp',
   });
+  const chromeOpacity = Animated.multiply(dragChrome, chromeShown);
 
   if (!open || !items) return null;
 
@@ -139,53 +168,69 @@ export function MediaLightbox({
       <GestureHandlerRootView style={styles.fill}>
         <Animated.View style={[styles.root, { opacity: bgOpacity }]}>
           <PanGestureHandler
-            activeOffsetY={12}
-            failOffsetX={[-18, 18]}
+            ref={panRef}
+            simultaneousHandlers={nativeRef}
+            activeOffsetY={16}
+            failOffsetX={[-24, 24]}
             onGestureEvent={onGestureEvent}
             onHandlerStateChange={onHandlerStateChange}
           >
             <Animated.View style={{ flex: 1, transform: [{ translateY }, { scale }] }}>
-              <FlatList
-                ref={listRef}
-                data={items}
-                horizontal
-                pagingEnabled
-                scrollEnabled={!dragging}
-                initialScrollIndex={Math.min(index, items.length - 1)}
-                getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
-                keyExtractor={(item, i) => `${item.url}-${i}`}
-                onMomentumScrollEnd={(e) => {
-                  const next = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
-                  setPage(Math.max(0, Math.min(next, items.length - 1)));
+              <TapGestureHandler
+                maxDeltaX={12}
+                maxDeltaY={12}
+                onHandlerStateChange={(e) => {
+                  if (e.nativeEvent.state === State.ACTIVE) toggleChrome();
                 }}
-                onScrollToIndexFailed={({ index: failed }) => {
-                  requestAnimationFrame(() => {
-                    listRef.current?.scrollToIndex({ index: failed, animated: false });
-                  });
-                }}
-                renderItem={({ item, index: i }) => (
-                  <View style={styles.page}>
-                    {item.mediaType === 'video' ? (
-                      i === page ? (
-                        <LightboxVideo url={item.url} active={!dragging} />
+              >
+                <Animated.View style={styles.fill}>
+                  <NativeViewGestureHandler ref={nativeRef} simultaneousHandlers={panRef}>
+                    <FlatList
+                  ref={listRef}
+                  data={items}
+                  horizontal
+                  pagingEnabled
+                  directionalLockEnabled
+                  showsHorizontalScrollIndicator={false}
+                  scrollEnabled={!dragging}
+                  initialScrollIndex={Math.min(index, items.length - 1)}
+                  getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
+                  keyExtractor={(item, i) => `${item.url}-${i}`}
+                  onMomentumScrollEnd={(e) => {
+                    const next = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+                    setPage(Math.max(0, Math.min(next, items.length - 1)));
+                  }}
+                  onScrollToIndexFailed={({ index: failed }) => {
+                    requestAnimationFrame(() => {
+                      listRef.current?.scrollToIndex({ index: failed, animated: false });
+                    });
+                  }}
+                  renderItem={({ item, index: i }) => (
+                    <View style={styles.page}>
+                      {item.mediaType === 'video' ? (
+                        i === page ? (
+                          <LightboxVideo url={item.url} active={!dragging} />
+                        ) : (
+                          <View style={styles.mediaWrap} />
+                        )
                       ) : (
-                        <View style={styles.mediaWrap} />
-                      )
-                    ) : (
-                      <LightboxPhoto url={item.url} />
-                    )}
-                  </View>
-                )}
-              />
+                        <LightboxPhoto url={item.url} />
+                      )}
+                    </View>
+                  )}
+                />
+                  </NativeViewGestureHandler>
+                </Animated.View>
+              </TapGestureHandler>
             </Animated.View>
           </PanGestureHandler>
           <Animated.View
-            style={[styles.chrome, { opacity: chromeOpacity, height: SCREEN_H * 0.2 }]}
-            pointerEvents={dragging ? 'none' : 'box-none'}
+            style={[styles.chrome, { opacity: chromeOpacity, height: SCREEN_H * 0.28 }]}
+            pointerEvents={dragging || !chromeOn ? 'none' : 'box-none'}
           >
             <LinearGradient
-              colors={['rgba(0,0,0,0.58)', 'rgba(0,0,0,0.22)', 'rgba(0,0,0,0)']}
-              locations={[0, 0.52, 1]}
+              colors={['rgba(0,0,0,0.92)', 'rgba(0,0,0,0.62)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0)']}
+              locations={[0, 0.38, 0.72, 1]}
               pointerEvents="none"
               style={StyleSheet.absoluteFill}
             />
@@ -244,7 +289,13 @@ function LightboxPhoto({ url }: { url: string }) {
   );
 }
 
-function LightboxVideo({ url, active }: { url: string; active: boolean }) {
+function LightboxVideo({
+  url,
+  active,
+}: {
+  url: string;
+  active: boolean;
+}) {
   const player = useVideoPlayer(url, (p) => {
     p.loop = false;
   });
@@ -267,13 +318,7 @@ function LightboxVideo({ url, active }: { url: string; active: boolean }) {
   }, [player]);
 
   return (
-    <Pressable
-      style={styles.mediaWrap}
-      onPress={() => {
-        if (player.playing) player.pause();
-        else void player.play();
-      }}
-    >
+    <View style={styles.mediaWrap}>
       <View pointerEvents="none" style={styles.photo}>
         <VideoView
           player={player}
@@ -292,7 +337,7 @@ function LightboxVideo({ url, active }: { url: string; active: boolean }) {
           <Ionicons name="play" size={44} color="#fff" />
         </View>
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 
@@ -342,9 +387,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   chromeIcon: {
-    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowColor: 'rgba(0,0,0,0.85)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
+    textShadowRadius: 10,
   },
   close: {
     alignItems: 'center',
@@ -356,9 +401,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
-    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowColor: 'rgba(0,0,0,0.85)',
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
+    textShadowRadius: 10,
   },
   countSpacer: {
     width: 44,
