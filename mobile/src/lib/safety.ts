@@ -1,4 +1,4 @@
-import { ActionSheetIOS, Alert, Platform } from 'react-native';
+import { ActionSheetIOS, Alert, InteractionManager, Platform } from 'react-native';
 
 const REASONS = [
   { id: 'inappropriate', label: 'Inappropriate' },
@@ -9,10 +9,17 @@ const REASONS = [
 
 export type ReportReason = (typeof REASONS)[number]['id'];
 
+/** iOS drops ActionSheets presented while a Modal is still dismissing. */
+export function afterDismiss(fn: () => void) {
+  InteractionManager.runAfterInteractions(() => {
+    setTimeout(fn, Platform.OS === 'ios' ? 400 : 0);
+  });
+}
+
 export function showReportBlockSheet(opts: { onReport: (reason: ReportReason) => void; onBlock: () => void }) {
   const pick = (index: number) => {
-    if (index === 1) showReasonSheet(opts.onReport);
-    if (index === 2) opts.onBlock();
+    if (index === 1) afterDismiss(() => showReasonSheet(opts.onReport));
+    if (index === 2) afterDismiss(() => opts.onBlock());
   };
 
   if (Platform.OS === 'ios') {
@@ -28,8 +35,8 @@ export function showReportBlockSheet(opts: { onReport: (reason: ReportReason) =>
   }
 
   Alert.alert('Safety', undefined, [
-    { text: 'Report', onPress: () => showReasonSheet(opts.onReport) },
-    { text: 'Block', style: 'destructive', onPress: opts.onBlock },
+    { text: 'Report', onPress: () => afterDismiss(() => showReasonSheet(opts.onReport)) },
+    { text: 'Block', style: 'destructive', onPress: () => afterDismiss(() => opts.onBlock()) },
     { text: 'Cancel', style: 'cancel' },
   ]);
 }
@@ -63,4 +70,8 @@ export function confirmBlock(username: string, onConfirm: () => void) {
     { text: 'Cancel', style: 'cancel' },
     { text: 'Block', style: 'destructive', onPress: onConfirm },
   ]);
+}
+
+export function blockedNotice() {
+  Alert.alert('Blocked', 'Unblock them in Groups → Privacy & account.');
 }

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { HttpError } from '../lib/httpError.js';
 import { canAccessSpot, isGroupMember } from '../lib/membership.js';
 import { hideContent } from '../lib/moderation.js';
+import { publicUsername } from '../lib/profile.js';
 import { supabaseAdmin } from '../supabase.js';
 
 export const moderationRouter = Router();
@@ -117,13 +118,13 @@ moderationRouter.get('/blocks', async (req, res) => {
       .in('id', ids);
     if (profileError) throw profileError;
     for (const profile of profiles ?? []) {
-      usernames.set(profile.id, profile.username);
+      usernames.set(profile.id, publicUsername(profile));
     }
   }
 
   const blocks = (data ?? []).map((row) => ({
     userId: row.blocked_id,
-    username: usernames.get(row.blocked_id) ?? 'unknown',
+    username: usernames.get(row.blocked_id) ?? 'Deleted Account',
     createdAt: row.created_at,
   }));
   res.json({ blocks });

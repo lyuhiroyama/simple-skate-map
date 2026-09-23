@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
-import { confirmBlock, showReportBlockSheet } from '../lib/safety';
+import { blockedNotice, confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
 import { Button, EmptyState } from '../components/ui';
 import { SendSpotSheet } from '../components/SendSpotSheet';
@@ -109,6 +109,7 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
         confirmBlock(spot.createdByUsername, async () => {
           try {
             await api.blockUser(spot.createdBy);
+            blockedNotice();
             navigation.goBack();
           } catch (e) {
             Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');

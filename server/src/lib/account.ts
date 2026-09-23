@@ -1,8 +1,9 @@
-import { CHAT_MEDIA_BUCKET, MEDIA_BUCKET, supabaseAdmin } from '../supabase.js';
+import { supabaseAdmin } from '../supabase.js';
+import { tombstoneUsername } from './profile.js';
 
 /**
- * Wipe the signed-in user: transfer groups they own if anyone else is left,
- * remove their media from storage, then delete the auth user (cascades profile).
+ * Remove the login. Keep the profile, messages, and spots.
+ * Other people still see that history as Deleted Account.
  */
 export async function deleteUserAccount(userId: string) {
   const { data: ownedGroups, error: groupsError } = await supabaseAdmin
@@ -35,50 +36,40 @@ export async function deleteUserAccount(userId: string) {
     if (roleError) throw roleError;
   }
 
-  const { data: chatRows, error: chatError } = await supabaseAdmin
-    .from('messages')
-    .select('storage_path, media')
+  const { data: memberships, error: membershipError } = await supabaseAdmin
+    .from('group_members')
+    .select('group_id')
     .eq('user_id', userId);
-  if (chatError) throw chatError;
-  const chatPaths = [
-    ...(chatRows ?? []).flatMap((row) => {
-      const fromJson = Array.isArray(row.media)
-        ? row.media.flatMap((item) => {
-            if (!item || typeof item !== 'object') return [];
-            const path = (item as { storagePath?: unknown }).storagePath;
-            return typeof path === 'string' ? [path] : [];
-          })
-        : [];
-      return [...fromJson, ...(row.storage_path ? [row.storage_path] : [])];
-    }),
-  ];
-  const uniqueChatPaths = [...new Set(chatPaths)];
-  if (uniqueChatPaths.length > 0) {
-    await supabaseAdmin.storage.from(CHAT_MEDIA_BUCKET).remove(uniqueChatPaths);
+  if (membershipError) throw membershipError;
+
+  const { error: leaveError } = await supabaseAdmin.from('group_members').delete().eq('user_id', userId);
+  if (leaveError) throw leaveError;
+
+  const { error: blocksError } = await supabaseAdmin.from('user_blocks').delete().eq('blocker_id', userId);
+  if (blocksError) throw blocksError;
+
+  const { error: hiddenError } = await supabaseAdmin.from('hidden_content').delete().eq('user_id', userId);
+  if (hiddenError) throw hiddenError;
+
+  for (const row of memberships ?? []) {
+    const { count, error: countError } = await supabaseAdmin
+      .from('group_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('group_id', row.group_id);
+    if (countError) throw countError;
+    if ((count ?? 0) > 0) continue;
+    const { error: deleteGroupError } = await supabaseAdmin.from('groups').delete().eq('id', row.group_id);
+    if (deleteGroupError) throw deleteGroupError;
   }
 
-  const { data: ownedSpots, error: spotsError } = await supabaseAdmin
-    .from('spots')
-    .select('id, spot_media(storage_path)')
-    .eq('created_by', userId);
-  if (spotsError) throw spotsError;
-
-  const { data: uploads, error: uploadsError } = await supabaseAdmin
-    .from('spot_media')
-    .select('storage_path')
-    .eq('uploaded_by', userId);
-  if (uploadsError) throw uploadsError;
-
-  const spotPaths = [
-    ...(ownedSpots ?? []).flatMap((spot) =>
-      (spot.spot_media ?? []).map((media) => media.storage_path),
-    ),
-    ...(uploads ?? []).map((media) => media.storage_path),
-  ].filter((path): path is string => Boolean(path));
-  const uniqueSpotPaths = [...new Set(spotPaths)];
-  if (uniqueSpotPaths.length > 0) {
-    await supabaseAdmin.storage.from(MEDIA_BUCKET).remove(uniqueSpotPaths);
-  }
+  const { error: tombstoneError } = await supabaseAdmin
+    .from('profiles')
+    .update({
+      username: tombstoneUsername(userId),
+      deleted_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+  if (tombstoneError) throw tombstoneError;
 
   const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId);
   if (deleteError) throw deleteError;

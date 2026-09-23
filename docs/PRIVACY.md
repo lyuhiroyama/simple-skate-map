@@ -27,9 +27,11 @@ content, we store the report so we can act on it.
 
 ## Keeping it
 
-We keep your data until you delete your account. Deleting your account removes
-your profile, messages, and spots you created. Groups you own are transferred
-to another member when one exists, or removed if you were the only member.
+We keep your data until you delete your account. Deleting your account
+removes your login. Messages and spots you created stay visible to people
+who already had them, labeled Deleted Account. Groups you own are
+transferred to another member when one exists, or removed if you were the
+only member.
 
 You can delete your account in the app: Groups → Privacy & account → Delete
 account.
@@ -37,8 +39,9 @@ account.
 ## Safety
 
 You can report a message or spot, and block a person so you stop seeing their
-content. Chat and spot text is filtered for language we do not allow. Email
-support to report a problem or ask us to remove content.
+content. Unblock people in Groups → Privacy & account. Chat and spot text is
+filtered for language we do not allow. Email support to report a problem or
+ask us to remove content.
 
 ## Children
 

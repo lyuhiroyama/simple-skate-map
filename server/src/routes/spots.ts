@@ -5,6 +5,7 @@ import { MEDIA_BUCKET, supabaseAdmin } from '../supabase.js';
 import { canAccessSpot, isGroupMember, memberGroupIds } from '../lib/membership.js';
 import { blockedUserIds, hiddenContentIds } from '../lib/moderation.js';
 import { signPaths } from '../lib/signedUrls.js';
+import { publicUsername } from '../lib/profile.js';
 import { assertCleanText } from '../lib/wordFilter.js';
 
 export const spotsRouter = Router();
@@ -236,8 +237,9 @@ spotsRouter.get('/:spotId', async (req, res) => {
       id: spot.id,
       groupIds: shareIds,
       createdBy: spot.created_by,
-      createdByUsername:
-        (spot.profiles as unknown as { username: string } | null)?.username ?? 'unknown',
+      createdByUsername: publicUsername(
+        spot.profiles as { username?: string; deleted_at?: string | null } | null,
+      ),
       name: spot.name,
       description: spot.description,
       address: spot.address,

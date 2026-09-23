@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { env } from './env.js';
 import { deleteUserAccount } from './lib/account.js';
 import { HttpError } from './lib/httpError.js';
+import { tombstoneUsername } from './lib/profile.js';
 import { requireAuth } from './middleware/auth.js';
 import { groupsRouter } from './routes/groups.js';
 import { moderationRouter } from './routes/moderation.js';
@@ -72,6 +73,11 @@ app.patch('/me', requireAuth, async (req, res) => {
     .eq('id', req.userId)
     .single();
   if (currentError) throw currentError;
+
+  if (username.startsWith('deleted_') || username === tombstoneUsername(req.userId)) {
+    res.status(400).json({ error: 'That username is not available' });
+    return;
+  }
 
   if (current.username === username) {
     res.json({

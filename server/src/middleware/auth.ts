@@ -25,6 +25,20 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return;
   }
 
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('username')
+    .eq('id', data.user.id)
+    .maybeSingle();
+  if (profileError) {
+    next(profileError);
+    return;
+  }
+  if (profile?.username?.startsWith('deleted_')) {
+    res.status(401).json({ error: 'Account deleted' });
+    return;
+  }
+
   req.userId = data.user.id;
   next();
 }

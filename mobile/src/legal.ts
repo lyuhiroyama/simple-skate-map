@@ -19,11 +19,11 @@ export const PRIVACY_SECTIONS: { title: string; body: string }[] = [
   },
   {
     title: 'Keeping it',
-    body: 'We keep your data until you delete your account. Deleting your account removes your profile, messages, and spots you created. Groups you own are transferred to another member when one exists, or removed if you were the only member.',
+    body: 'We keep your data until you delete your account. Deleting your account removes your login. Messages and spots you created stay visible to people who already had them, labeled Deleted Account. Groups you own are transferred to another member when one exists, or removed if you were the only member.',
   },
   {
     title: 'Safety',
-    body: 'You can report a message or spot, and block a person so you stop seeing their content. Chat and spot text is filtered for language we do not allow. To report a problem or ask us to remove content, email support.',
+    body: 'You can report a message or spot, and block a person so you stop seeing their content. Unblock people in Groups → Privacy & account. Chat and spot text is filtered for language we do not allow. To report a problem or ask us to remove content, email support.',
   },
   {
     title: 'Children',

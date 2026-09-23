@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { CHAT_MEDIA_BUCKET, MEDIA_BUCKET, supabaseAdmin } from '../supabase.js';
 import { groupRole, isGroupMember, memberGroupIds } from '../lib/membership.js';
 import { blockedUserIds, hiddenContentIds } from '../lib/moderation.js';
+import { publicUsername } from '../lib/profile.js';
 import { signPaths } from '../lib/signedUrls.js';
 import { assertCleanText } from '../lib/wordFilter.js';
 
@@ -135,7 +136,7 @@ groupsRouter.get('/:groupId/members', async (req, res) => {
     userId: m.user_id,
     role: m.role,
     joinedAt: m.joined_at,
-    username: (m.profiles as unknown as { username: string } | null)?.username ?? 'unknown',
+    username: publicUsername(m.profiles as { username?: string; deleted_at?: string | null } | null),
   }));
 
   res.json({ members });
@@ -345,7 +346,7 @@ groupsRouter.get('/:groupId/messages', async (req, res) => {
     const spotUrl = preview ? spotSigned.get(preview.storagePath) : undefined;
     return mapMessage(
       row,
-      (row.profiles as unknown as { username: string } | null)?.username ?? 'unknown',
+      publicUsername(row.profiles as { username?: string; deleted_at?: string | null } | null),
       media,
       spotUrl && preview ? { url: spotUrl, mediaType: preview.mediaType } : undefined,
       summarizeReactions(reactionRows, row.id, req.userId),

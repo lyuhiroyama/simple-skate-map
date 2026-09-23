@@ -119,6 +119,10 @@ export function GroupsScreen() {
       Alert.alert('Invalid username', 'Use 2–32 letters, numbers, and underscores.');
       return;
     }
+    if (next.startsWith('deleted_')) {
+      Alert.alert('Could not save', 'That username is not available.');
+      return;
+    }
     setSavingUsername(true);
     try {
       const { profile } = await api.updateUsername(next);

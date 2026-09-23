@@ -62,7 +62,7 @@ export function LegalScreen({}: RootStackScreenProps<'Legal'>) {
   const deleteAccount = () => {
     Alert.alert(
       'Delete account?',
-      'This permanently removes your profile, spots you added, and messages. Groups you own go to another member if one is left.',
+      'Your login is removed. Messages and spots stay visible to others as Deleted Account. Groups you own go to another member if one is left.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -98,17 +98,23 @@ export function LegalScreen({}: RootStackScreenProps<'Legal'>) {
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <Text style={styles.kicker}>Privacy</Text>
-      <PrivacyCopy />
-
-      <Text style={styles.kicker}>Blocked</Text>
+      <Text style={styles.kicker}>Blocked accounts</Text>
+      <Text style={styles.sectionBody}>
+        People you block are hidden from your chats and map. Unblock them here.
+      </Text>
       {blocks.length === 0 ? (
-        <Text style={styles.sectionBody}>You have not blocked anyone.</Text>
+        <Text style={styles.emptyBlocks}>You have not blocked anyone.</Text>
       ) : (
         blocks.map((person) => (
           <View key={person.userId} style={styles.blockRow}>
             <Text style={styles.blockName}>{person.username}</Text>
-            <Pressable onPress={() => unblock(person)} hitSlop={8} accessibilityRole="button">
+            <Pressable
+              onPress={() => unblock(person)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Unblock ${person.username}`}
+              style={styles.unblockBtn}
+            >
               <Text style={styles.unblock}>Unblock</Text>
             </Pressable>
           </View>
@@ -123,6 +129,9 @@ export function LegalScreen({}: RootStackScreenProps<'Legal'>) {
         loading={deleting}
         disabled={deleting}
       />
+
+      <Text style={styles.kicker}>Privacy</Text>
+      <PrivacyCopy />
     </ScrollView>
   );
 }
@@ -160,19 +169,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
+  emptyBlocks: {
+    color: colors.textMuted,
+    fontSize: 15,
+  },
   blockRow: {
     alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   blockName: {
     color: colors.text,
+    flex: 1,
     fontSize: 16,
     fontWeight: '600',
+    marginRight: 12,
+  },
+  unblockBtn: {
+    paddingVertical: 4,
   },
   unblock: {
     color: colors.primary,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
   },
 });

@@ -15,7 +15,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
 import { hapticClick } from '../lib/haptics';
-import { confirmBlock, showReportBlockSheet } from '../lib/safety';
+import { afterDismiss, blockedNotice, confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
 import { chatMediaOf } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -115,6 +115,7 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
             await api.blockUser(item.userId);
             setItems((prev) => prev.filter((m) => m.userId !== item.userId));
             setLightboxIndex(null);
+            blockedNotice();
           } catch (e) {
             Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
           }
@@ -155,7 +156,8 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
         onClose={() => setLightboxIndex(null)}
         onSafety={(target) => {
           const tile = items.find((item) => item.messageId === target.messageId && item.url === target.url);
-          if (tile) onTileSafety(tile);
+          setLightboxIndex(null);
+          if (tile) afterDismiss(() => onTileSafety(tile));
         }}
       />
     </>

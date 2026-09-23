@@ -540,10 +540,33 @@ export const previewApi = {
   },
 
   deleteMe: async () => {
-    groups = [];
-    membersByGroup = {};
-    spots = [];
-    messagesByGroup = {};
+    const deletedName = 'Deleted Account';
+    for (const list of Object.values(messagesByGroup)) {
+      for (const message of list) {
+        if (message.userId === USER_ID) message.username = deletedName;
+      }
+    }
+    spots = spots.map((spot) =>
+      spot.createdBy === USER_ID ? { ...spot, createdByUsername: deletedName } : spot,
+    );
+    const keptGroups: Group[] = [];
+    const keptMembers: Record<string, GroupMember[]> = {};
+    for (const group of groups) {
+      const remaining = (membersByGroup[group.id] ?? []).filter((member) => member.userId !== USER_ID);
+      if (remaining.length === 0) continue;
+      if (remaining[0] && group.createdBy === USER_ID) {
+        remaining[0].role = 'owner';
+      }
+      keptMembers[group.id] = remaining;
+      keptGroups.push({
+        ...group,
+        createdBy: group.createdBy === USER_ID ? remaining[0].userId : group.createdBy,
+        memberCount: remaining.length,
+        myRole: 'member',
+      });
+    }
+    groups = keptGroups;
+    membersByGroup = keptMembers;
     blockedUsers = [];
     hiddenMessages = [];
     hiddenSpots = [];

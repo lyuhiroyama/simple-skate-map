@@ -29,7 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../lib/api';
 import { hapticClick } from '../lib/haptics';
 import { toggleReaction } from '../lib/reactions';
-import { confirmBlock, showReasonSheet } from '../lib/safety';
+import { afterDismiss, blockedNotice, confirmBlock, showReasonSheet } from '../lib/safety';
 import { assertCleanText } from '../lib/wordFilter';
 import { useAuth } from '../context/AuthContext';
 import { chatMediaOf, type ChatMedia, type ChatMessage, type Group, type GroupMember } from '../types';
@@ -338,6 +338,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         await api.blockUser(item.userId);
         setMessages((prev) => prev.filter((m) => m.userId !== item.userId));
         setLightbox(null);
+        blockedNotice();
       } catch (e) {
         Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
       }
@@ -658,7 +659,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
           if (msg) {
             hapticClick();
             setLightbox(null);
-            setActionsFor(msg);
+            afterDismiss(() => setActionsFor(msg));
           }
         }}
       />
@@ -681,12 +682,12 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         onReport={() => {
           const target = actionsFor;
           setActionsFor(null);
-          if (target) reportMessage(target);
+          if (target) afterDismiss(() => reportMessage(target));
         }}
         onBlock={() => {
           const target = actionsFor;
           setActionsFor(null);
-          if (target) blockSender(target);
+          if (target) afterDismiss(() => blockSender(target));
         }}
       />
 
