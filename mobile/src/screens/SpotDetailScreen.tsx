@@ -17,7 +17,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
-import { openAddressInGoogleMaps } from '../lib/maps';
+import { reverseGeocodeEnJa } from '../lib/geocode';
+import { openInGoogleMaps } from '../lib/maps';
 import { blockedNotice, confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
 import { Button, EmptyState } from '../components/ui';
@@ -44,6 +45,9 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
   const [mediaIndex, setMediaIndex] = useState(0);
   const [addingMedia, setAddingMedia] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [addressEn, setAddressEn] = useState<string | null>(null);
+  const [addressJa, setAddressJa] = useState<string | null>(null);
+  const [addressLoading, setAddressLoading] = useState(false);
   const groupIdsRef = useRef<string[]>([]);
   const shareChain = useRef(Promise.resolve());
 
@@ -64,6 +68,23 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
           setGroups(g);
           setMediaIndex(0);
           setError(null);
+          setAddressEn(null);
+          setAddressJa(null);
+          setAddressLoading(true);
+          void reverseGeocodeEnJa(s.latitude, s.longitude)
+            .then((places) => {
+              if (cancelled) return;
+              setAddressEn(places.en);
+              setAddressJa(places.ja);
+            })
+            .catch(() => {
+              if (cancelled) return;
+              setAddressEn(null);
+              setAddressJa(null);
+            })
+            .finally(() => {
+              if (!cancelled) setAddressLoading(false);
+            });
         } catch (e: unknown) {
           if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load spot');
         }
@@ -233,18 +254,41 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
         added by {spot.createdByUsername} · {new Date(spot.createdAt).toLocaleDateString()}
       </Text>
 
-      {spot.address ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Address</Text>
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Address</Text>
+        <View style={styles.addressBlock}>
+          {addressLoading ? (
+            <ActivityIndicator color={colors.primary} style={styles.addressSpinner} />
+          ) : (
+            <>
+              <View style={styles.addressLang}>
+                <Text style={styles.addressLangLabel}>English</Text>
+                <Text style={styles.sectionText}>{addressEn || spot.address || '—'}</Text>
+              </View>
+              {addressJa && addressJa !== addressEn ? (
+                <View style={styles.addressLang}>
+                  <Text style={styles.addressLangLabel}>日本語</Text>
+                  <Text style={styles.sectionText}>{addressJa}</Text>
+                </View>
+              ) : null}
+            </>
+          )}
           <Pressable
-            onPress={() => void openAddressInGoogleMaps(spot.address)}
-            accessibilityRole="link"
-            accessibilityLabel={`Open ${spot.address} in Google Maps`}
+            onPress={() =>
+              void openInGoogleMaps({
+                latitude: spot.latitude,
+                longitude: spot.longitude,
+                name: spot.name,
+              })
+            }
+            style={styles.mapsRow}
+            accessibilityLabel="Open in Google Maps"
           >
-            <Text style={styles.addressLink}>{spot.address}</Text>
+            <Ionicons name="map-outline" size={16} color={colors.selected} />
+            <Text style={styles.addressLink}>Google Maps</Text>
           </Pressable>
         </View>
-      ) : null}
+      </View>
 
       {spot.description ? (
         <View style={styles.section}>
@@ -452,11 +496,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
+  addressBlock: {
+    gap: spacing.md,
+  },
+  addressSpinner: {
+    alignSelf: 'flex-start',
+    marginVertical: 6,
+  },
+  addressLang: {
+    gap: 2,
+  },
+  addressLangLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  mapsRow: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    gap: 6,
+  },
   addressLink: {
     color: colors.selected,
     fontSize: 15,
+    fontWeight: '600',
     lineHeight: 22,
-    textDecorationLine: 'underline',
   },
   mediaStrip: {
     marginTop: spacing.xs,
