@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useEvent } from 'expo';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import {
@@ -179,35 +180,43 @@ export function MediaLightbox({
             </Animated.View>
           </PanGestureHandler>
           <Animated.View
-            style={[styles.chrome, { opacity: chromeOpacity, paddingTop: Math.max(insets.top, 12) }]}
+            style={[styles.chrome, { opacity: chromeOpacity, height: SCREEN_H * 0.2 }]}
             pointerEvents={dragging ? 'none' : 'box-none'}
           >
-            <Pressable onPress={onClose} hitSlop={12} style={styles.close} accessibilityLabel="Close">
-              <Ionicons name="close" size={28} color="#fff" />
-            </Pressable>
-            {items.length > 1 ? (
-              <Text style={styles.count}>
-                {page + 1} of {items.length}
-              </Text>
-            ) : (
-              <View style={styles.countSpacer} />
-            )}
-            {canReport ? (
-              <Pressable
-                onPress={() => {
-                  if (!current) return;
-                  hapticClick();
-                  onSafety?.(current);
-                }}
-                hitSlop={12}
-                style={styles.close}
-                accessibilityLabel="Report or block"
-              >
-                <Ionicons name="flag-outline" size={22} color="#fff" />
+            <LinearGradient
+              colors={['rgba(0,0,0,0.58)', 'rgba(0,0,0,0.22)', 'rgba(0,0,0,0)']}
+              locations={[0, 0.52, 1]}
+              pointerEvents="none"
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={[styles.chromeRow, { paddingTop: Math.max(insets.top, 12) }]}>
+              <Pressable onPress={onClose} hitSlop={12} style={styles.close} accessibilityLabel="Close">
+                <Ionicons name="close" size={28} color="#fff" style={styles.chromeIcon} />
               </Pressable>
-            ) : (
-              <View style={styles.close} />
-            )}
+              {items.length > 1 ? (
+                <Text style={styles.count}>
+                  {page + 1} of {items.length}
+                </Text>
+              ) : (
+                <View style={styles.countSpacer} />
+              )}
+              {canReport ? (
+                <Pressable
+                  onPress={() => {
+                    if (!current) return;
+                    hapticClick();
+                    onSafety?.(current);
+                  }}
+                  hitSlop={12}
+                  style={styles.close}
+                  accessibilityLabel="Report or block"
+                >
+                  <Ionicons name="flag-outline" size={22} color="#fff" style={styles.chromeIcon} />
+                </Pressable>
+              ) : (
+                <View style={styles.close} />
+              )}
+            </View>
           </Animated.View>
         </Animated.View>
       </GestureHandlerRootView>
@@ -320,15 +329,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   chrome: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     left: 0,
-    paddingHorizontal: 12,
-    paddingBottom: 12,
     position: 'absolute',
     right: 0,
     top: 0,
+  },
+  chromeRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingBottom: 12,
+    paddingHorizontal: 12,
+  },
+  chromeIcon: {
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
   },
   close: {
     alignItems: 'center',
@@ -340,6 +356,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
   },
   countSpacer: {
     width: 44,

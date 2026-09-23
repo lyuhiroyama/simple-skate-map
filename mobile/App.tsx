@@ -8,12 +8,35 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import { isDemo } from './src/config';
 import { initPreview } from './src/lib/preview';
 import { startApiKeepAlive } from './src/lib/api';
+import { installErrorReporting, reportError } from './src/lib/errors';
 import { colors, spacing } from './src/theme';
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  componentDidCatch(error: Error) {
+    reportError('render', error);
+    this.setState({ failed: true });
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <View style={styles.boot}>
+          <Text style={styles.crashTitle}>Something went wrong</Text>
+          <Text style={styles.crashBody}>Close the app and open it again.</Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const [ready, setReady] = useState(!isDemo);
 
   useEffect(() => {
+    installErrorReporting();
     const stopKeepAlive = startApiKeepAlive();
     if (!isDemo) return stopKeepAlive;
     initPreview().finally(() => setReady(true));
@@ -31,17 +54,19 @@ export default function App() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <StatusBar style="light" />
-          {isDemo ? (
-            <View style={styles.demoBanner}>
-              <Text style={styles.demoBannerText}>
-                Sample places to look at — no live account.
-              </Text>
-            </View>
-          ) : null}
-          <RootNavigator />
-        </AuthProvider>
+        <ErrorBoundary>
+          <AuthProvider>
+            <StatusBar style="light" />
+            {isDemo ? (
+              <View style={styles.demoBanner}>
+                <Text style={styles.demoBannerText}>
+                  Sample places to look at — no live account.
+                </Text>
+              </View>
+            ) : null}
+            <RootNavigator />
+          </AuthProvider>
+        </ErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
@@ -56,6 +81,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     flex: 1,
     justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
   },
   demoBanner: {
     backgroundColor: colors.primaryDark,
@@ -65,6 +91,17 @@ const styles = StyleSheet.create({
   demoBannerText: {
     color: colors.onPrimary,
     fontSize: 12,
+    textAlign: 'center',
+  },
+  crashTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  crashBody: {
+    color: colors.textMuted,
+    fontSize: 15,
+    marginTop: spacing.sm,
     textAlign: 'center',
   },
 });

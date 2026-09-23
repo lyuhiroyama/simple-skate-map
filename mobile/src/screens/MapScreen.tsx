@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import MapView, { Marker, type LongPressEvent, type Region } from 'react-native-maps';
 import { api } from '../lib/api';
+import { alertError } from '../lib/errors';
 import type { Group, SpotPin } from '../types';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, radius, spacing } from '../theme';
@@ -104,7 +105,7 @@ export function MapScreen() {
       setSpots(spotsRes.spots);
       setGroups(groupsRes.groups);
     } catch (e) {
-      Alert.alert('Could not load spots', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not load spots', e);
     } finally {
       setLoadingPins(false);
     }

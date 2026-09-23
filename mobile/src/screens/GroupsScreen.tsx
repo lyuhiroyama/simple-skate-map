@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import { api } from '../lib/api';
+import { alertError } from '../lib/errors';
 import { useAuth } from '../context/AuthContext';
 import { Button, EmptyState, Field } from '../components/ui';
 import type { Group } from '../types';
@@ -44,7 +45,7 @@ export function GroupsScreen() {
       setGroups(g);
       setUsername(me.profile.username);
     } catch (e) {
-      Alert.alert('Could not load groups', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not load groups', e);
     } finally {
       setLoading(false);
     }
@@ -74,7 +75,7 @@ export function GroupsScreen() {
         `Invite code: ${group.inviteCode.toUpperCase()}\n\nShare that from the group’s Invite menu. Friends paste it under Invite code on Groups.`,
       );
     } catch (e) {
-      Alert.alert('Could not create group', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not create group', e);
     } finally {
       setBusy(false);
     }
@@ -89,7 +90,7 @@ export function GroupsScreen() {
       await load();
       Alert.alert('You are in!', `Joined "${group.name}".`);
     } catch (e) {
-      Alert.alert('Could not join', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not join', e);
     } finally {
       setBusy(false);
     }
@@ -129,7 +130,7 @@ export function GroupsScreen() {
       setUsername(profile.username);
       setUsernameOpen(false);
     } catch (e) {
-      Alert.alert('Could not save', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not save', e);
     } finally {
       setSavingUsername(false);
     }

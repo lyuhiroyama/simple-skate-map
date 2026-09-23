@@ -27,6 +27,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../lib/api';
+import { alertError } from '../lib/errors';
 import { hapticClick } from '../lib/haptics';
 import { toggleReaction } from '../lib/reactions';
 import { afterDismiss, blockedNotice, confirmBlock, showReasonSheet } from '../lib/safety';
@@ -87,7 +88,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
       let cancelled = false;
       load().catch((e: unknown) => {
         if (!cancelled) {
-          Alert.alert('Could not load group', e instanceof Error ? e.message : 'Unknown error');
+          alertError('Could not load group', e);
         }
       });
       return () => {
@@ -124,7 +125,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
       })
       .catch((e: unknown) => {
         if (!cancelled) {
-          Alert.alert('Could not load members', e instanceof Error ? e.message : 'Unknown error');
+          alertError('Could not load members', e);
         }
       })
       .finally(() => {
@@ -149,7 +150,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
               current ? { ...current, memberCount: Math.max(0, current.memberCount - 1) } : current,
             );
           } catch (e) {
-            Alert.alert('Could not remove', e instanceof Error ? e.message : 'Unknown error');
+            alertError('Could not remove', e);
           }
         },
       },
@@ -168,7 +169,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
             await api.leaveGroup(groupId);
             navigation.goBack();
           } catch (e) {
-            Alert.alert('Could not leave', e instanceof Error ? e.message : 'Unknown error');
+            alertError('Could not leave', e);
           }
         },
       },
@@ -220,7 +221,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
     try {
       if (body) assertCleanText(body, 'Message');
     } catch (e) {
-      Alert.alert('Could not send', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not send', e);
       return;
     }
 
@@ -272,7 +273,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
       );
     } catch (e) {
       setMessages((prev) => prev.map((m) => (m.id === local.id ? { ...m, status: 'failed' } : m)));
-      Alert.alert('Could not send', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not send', e);
     }
   };
 
@@ -309,7 +310,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
       if (result.canceled || result.assets.length === 0) return;
       setPendingMedia((prev) => [...prev, ...result.assets].slice(0, 8));
     } catch (e) {
-      Alert.alert('Could not add media', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not add media', e);
     }
   };
 
@@ -344,7 +345,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         setLightbox(null);
         Alert.alert('Reported', 'Thanks. You will not see this message.');
       } catch (e) {
-        Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
+        alertError('Could not report', e);
       }
     });
   };
@@ -357,7 +358,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
         setLightbox(null);
         blockedNotice();
       } catch (e) {
-        Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
+        alertError('Could not block', e);
       }
     });
   };
@@ -372,7 +373,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
       setMessages((prev) => prev.map((m) => (m.id === item.id ? { ...m, reactions } : m)));
     } catch (e) {
       setMessages((prev) => prev.map((m) => (m.id === item.id ? { ...m, reactions: previous } : m)));
-      Alert.alert('Could not react', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not react', e);
     }
   };
 

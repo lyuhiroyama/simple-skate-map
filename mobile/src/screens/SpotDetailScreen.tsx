@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
+import { alertError, explainError, reportError } from '../lib/errors';
 import { reverseGeocodeEnJa } from '../lib/geocode';
 import { openInGoogleMaps } from '../lib/maps';
 import { blockedNotice, confirmBlock, showReportBlockSheet } from '../lib/safety';
@@ -86,7 +87,10 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
               if (!cancelled) setAddressLoading(false);
             });
         } catch (e: unknown) {
-          if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load spot');
+          if (!cancelled) {
+            reportError('load-spot', e);
+            setError(explainError(e, 'Failed to load spot'));
+          }
         }
       })();
       return () => {
@@ -108,7 +112,7 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
             navigation.goBack();
           } catch (e) {
             setDeleting(false);
-            Alert.alert('Delete failed', e instanceof Error ? e.message : 'Unknown error');
+            alertError('Delete failed', e);
           }
         },
       },
@@ -124,7 +128,7 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
           Alert.alert('Reported', 'Thanks. You will not see this spot.');
           navigation.goBack();
         } catch (e) {
-          Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
+          alertError('Could not report', e);
         }
       },
       onBlock: () =>
@@ -134,7 +138,7 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
             blockedNotice();
             navigation.goBack();
           } catch (e) {
-            Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
+            alertError('Could not block', e);
           }
         }),
     });
@@ -167,7 +171,7 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
       setSpot((current) => (current ? { ...current, groupIds: next } : current));
       setSendOpen(false);
     } catch (e) {
-      Alert.alert('Could not send', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not send', e);
     } finally {
       setSending(false);
     }
@@ -192,7 +196,7 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
         if (groupIdsRef.current.join() !== next.join()) return;
         groupIdsRef.current = previous;
         setSpot((current) => (current ? { ...current, groupIds: previous } : current));
-        Alert.alert('Could not update sharing', e instanceof Error ? e.message : 'Unknown error');
+        alertError('Could not update sharing', e);
       } finally {
         setSharing(false);
       }
@@ -241,7 +245,7 @@ export function SpotDetailScreen({ route, navigation }: RootStackScreenProps<'Sp
       setSpot(next);
       setMediaIndex(Math.max(0, next.media.length - 1));
     } catch (e) {
-      Alert.alert('Could not add media', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not add media', e);
     } finally {
       setAddingMedia(false);
     }

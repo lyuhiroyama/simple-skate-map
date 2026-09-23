@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { api } from '../lib/api';
+import { alertError } from '../lib/errors';
 import { uploadSpotAsset } from '../lib/upload';
 import { Button, Field } from '../components/ui';
 import type { Group } from '../types';
@@ -127,7 +128,7 @@ export function AddSpotScreen({ route, navigation }: RootStackScreenProps<'AddSp
 
       navigation.goBack();
     } catch (e) {
-      Alert.alert('Save failed', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Save failed', e);
       setSaving(false);
       setSavingLabel('Save spot');
     }

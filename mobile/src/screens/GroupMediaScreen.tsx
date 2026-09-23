@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
+import { alertError } from '../lib/errors';
 import { hapticClick } from '../lib/haptics';
 import { blockedNotice, confirmBlock, showReportBlockSheet } from '../lib/safety';
 import { useAuth } from '../context/AuthContext';
@@ -72,7 +73,7 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
         })
         .catch((e: unknown) => {
           if (!cancelled) {
-            Alert.alert('Could not load media', e instanceof Error ? e.message : 'Unknown error');
+            alertError('Could not load media', e);
           }
         })
         .finally(() => {
@@ -106,7 +107,7 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
           setLightboxIndex(null);
           Alert.alert('Reported', 'Thanks. You will not see this.');
         } catch (e) {
-          Alert.alert('Could not report', e instanceof Error ? e.message : 'Unknown error');
+          alertError('Could not report', e);
         }
       },
       onBlock: () =>
@@ -117,7 +118,7 @@ export function GroupMediaScreen({ route }: RootStackScreenProps<'GroupMedia'>) 
             setLightboxIndex(null);
             blockedNotice();
           } catch (e) {
-            Alert.alert('Could not block', e instanceof Error ? e.message : 'Unknown error');
+            alertError('Could not block', e);
           }
         }),
     });

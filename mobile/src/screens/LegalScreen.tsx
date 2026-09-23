@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { api } from '../lib/api';
+import { alertError } from '../lib/errors';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/ui';
 import { PRIVACY_SECTIONS } from '../legal';
@@ -32,7 +33,7 @@ export function LegalScreen({}: RootStackScreenProps<'Legal'>) {
       const { blocks: next } = await api.getBlocks();
       setBlocks(next);
     } catch (e) {
-      Alert.alert('Could not load blocked people', e instanceof Error ? e.message : 'Unknown error');
+      alertError('Could not load blocked people', e);
     }
   }, []);
 
@@ -52,7 +53,7 @@ export function LegalScreen({}: RootStackScreenProps<'Legal'>) {
             await api.unblockUser(person.userId);
             setBlocks((prev) => prev.filter((b) => b.userId !== person.userId));
           } catch (e) {
-            Alert.alert('Could not unblock', e instanceof Error ? e.message : 'Unknown error');
+            alertError('Could not unblock', e);
           }
         },
       },
@@ -80,10 +81,7 @@ export function LegalScreen({}: RootStackScreenProps<'Legal'>) {
                     await api.deleteMe();
                   } catch (e) {
                     setDeleting(false);
-                    Alert.alert(
-                      'Could not delete account',
-                      e instanceof Error ? e.message : 'Unknown error',
-                    );
+                    alertError('Could not delete account', e);
                     return;
                   }
                   await signOut();

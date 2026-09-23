@@ -12,21 +12,8 @@ import { spotsRouter } from './routes/spots.js';
 import { supabaseAdmin } from './supabase.js';
 
 function publicErrorMessage(err: unknown): string {
-  let message = '';
-  if (err instanceof Error && err.message) message = err.message;
-  else if (err && typeof err === 'object' && 'message' in err) {
-    const value = (err as { message?: unknown }).message;
-    if (typeof value === 'string') message = value;
-  }
-  const trimmed = message.trim();
-  if (!trimmed) return 'Internal server error';
-  if (
-    trimmed.length > 240 ||
-    /<!DOCTYPE|<html|SSL handshake|cloudflare/i.test(trimmed)
-  ) {
-    return 'Could not reach the database. Try again in a moment.';
-  }
-  return trimmed;
+  if (err instanceof HttpError) return err.message;
+  return 'Something went wrong. Try again.';
 }
 
 const app = express();
@@ -36,6 +23,61 @@ app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
+});
+
+const clientErrorSchema = z.object({
+  action: z.string().trim().max(80).optional(),
+  name: z.string().trim().max(120).optional(),
+  message: z.string().trim().max(2000).optional(),
+  stack: z.string().trim().max(4000).optional(),
+  appVersion: z.string().trim().max(32).optional(),
+  platform: z.string().trim().max(16).optional(),
+});
+
+const errorLogHits = new Map<string, { count: number; resetAt: number }>();
+
+app.post('/client-errors', async (req, res) => {
+  try {
+    const parsed = clientErrorSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(204).end();
+      return;
+    }
+
+    let userId: string | null = null;
+    const header = req.headers.authorization;
+    if (header?.startsWith('Bearer ')) {
+      const { data } = await supabaseAdmin.auth.getUser(header.slice('Bearer '.length));
+      userId = data.user?.id ?? null;
+    }
+
+    const key = userId ?? req.ip ?? 'anon';
+    const now = Date.now();
+    const hit = errorLogHits.get(key);
+    if (!hit || now > hit.resetAt) {
+      errorLogHits.set(key, { count: 1, resetAt: now + 10 * 60 * 1000 });
+    } else if (hit.count >= 40) {
+      res.status(204).end();
+      return;
+    } else {
+      hit.count += 1;
+    }
+
+    const body = parsed.data;
+    const { error } = await supabaseAdmin.from('client_errors').insert({
+      user_id: userId,
+      action: body.action ?? '',
+      name: body.name ?? 'Error',
+      message: body.message ?? '',
+      stack: body.stack ?? null,
+      app_version: body.appVersion ?? null,
+      platform: body.platform ?? null,
+    });
+    if (error) console.error(error);
+  } catch (err) {
+    console.error(err);
+  }
+  res.status(204).end();
 });
 
 app.use('/groups', requireAuth, groupsRouter);

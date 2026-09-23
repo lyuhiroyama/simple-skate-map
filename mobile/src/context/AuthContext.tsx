@@ -6,6 +6,7 @@ import * as WebBrowser from 'expo-web-browser';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import { isDemo } from '../config';
+import { explainError, reportError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -83,7 +84,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         provider: 'apple',
         token: credential.identityToken,
       });
-      if (error) return error.message;
+      if (error) {
+        reportError('apple-signin', error);
+        return explainError(error, 'Apple sign-in didn’t work. Try again.');
+      }
 
       if (credential.fullName?.givenName || credential.fullName?.familyName) {
         const nameParts = [
@@ -102,7 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       const code = typeof e === 'object' && e && 'code' in e ? String(e.code) : '';
       if (code === 'ERR_REQUEST_CANCELED') return null;
-      return e instanceof Error ? e.message : 'Apple sign-in failed.';
+      reportError('apple-signin', e);
+      return explainError(e, 'Apple sign-in didn’t work. Try again.');
     }
   };
 
@@ -120,23 +125,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         skipBrowserRedirect: true,
       },
     });
-    if (error) return error.message;
-    if (!data.url) return 'Google sign-in did not start.';
+    if (error) {
+      reportError('google-oauth', error);
+      return explainError(error, 'Google sign-in didn’t work. Try again.');
+    }
+    if (!data.url) return 'Google sign-in didn’t work. Try again.';
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
     if (result.type !== 'success') return null;
 
     const { params, errorCode } = QueryParams.getQueryParams(result.url);
-    if (errorCode) return errorCode;
+    if (errorCode) {
+      if (/access_denied|cancel/i.test(errorCode)) return null;
+      reportError('google-oauth-code', errorCode);
+      return 'Google sign-in didn’t work. Try again.';
+    }
     const { access_token, refresh_token } = params;
     if (!access_token || !refresh_token) {
-      return 'Google sign-in did not return a session.';
+      return 'Google sign-in didn’t work. Try again.';
     }
     const { error: sessionError } = await supabase.auth.setSession({
       access_token,
       refresh_token,
     });
-    return sessionError ? sessionError.message : null;
+    if (sessionError) {
+      reportError('google-session', sessionError);
+      return explainError(sessionError, 'Google sign-in didn’t work. Try again.');
+    }
+    return null;
   };
 
   const signOut = async () => {

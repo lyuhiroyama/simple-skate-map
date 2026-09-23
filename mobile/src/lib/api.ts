@@ -5,7 +5,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { AppState } from 'react-native';
 import type { BlockedUser, ChatMessage, Group, GroupMember, MessageReaction, PendingUpload, Profile, SpotDetail, SpotPin } from '../types';
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
