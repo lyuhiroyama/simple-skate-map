@@ -33,6 +33,7 @@ import { toggleReaction } from '../lib/reactions';
 import { afterDismiss, blockedNotice, confirmBlock, showReasonSheet } from '../lib/safety';
 import { assertCleanText } from '../lib/wordFilter';
 import { useAuth } from '../context/AuthContext';
+import { useUnread } from '../context/UnreadContext';
 import { chatMediaOf, type ChatMedia, type ChatMessage, type Group, type GroupMember } from '../types';
 import type { RootStackScreenProps } from '../navigation/types';
 import { colors, spacing } from '../theme';
@@ -43,6 +44,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
   const { groupId, groupName } = route.params;
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const { markGroupRead, refreshUnread } = useUnread();
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const [group, setGroup] = useState<Group | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -86,6 +88,7 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
+      markGroupRead(groupId);
       load().catch((e: unknown) => {
         if (!cancelled) {
           alertError('Could not load group', e);
@@ -93,8 +96,9 @@ export function GroupDetailScreen({ route, navigation }: RootStackScreenProps<'G
       });
       return () => {
         cancelled = true;
+        void refreshUnread();
       };
-    }, [load]),
+    }, [groupId, load, markGroupRead, refreshUnread]),
   );
 
   const inviteCode = group?.inviteCode?.toUpperCase() ?? '';

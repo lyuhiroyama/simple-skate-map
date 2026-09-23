@@ -146,6 +146,11 @@ const liveApi = {
   getMessages: (groupId: string) =>
     request<{ messages: ChatMessage[] }>(`/groups/${groupId}/messages`),
 
+  getUnread: () => request<{ groupIds: string[] }>('/groups/unread'),
+
+  markGroupRead: (groupId: string) =>
+    request<void>(`/groups/${groupId}/read`, { method: 'POST' }),
+
   reactToMessage: (groupId: string, messageId: string, emoji: string) =>
     request<{ reactions: MessageReaction[] }>(
       `/groups/${groupId}/messages/${messageId}/reactions`,

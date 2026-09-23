@@ -1,7 +1,7 @@
 # Privacy Policy
 
-**Simple Skate Map** (“the app”) is for documenting street architecture and
-clips with people you invite. It is not a guidebook. Do not trespass.
+**Simple Skate Map** (“the app”) is for documenting street architecture
+with people you invite. It is not a guidebook. Do not trespass.
 
 **Contact:** beanface.studios@gmail.com
 

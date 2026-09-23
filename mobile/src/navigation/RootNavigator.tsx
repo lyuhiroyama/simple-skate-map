@@ -6,6 +6,7 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
+import { useUnread } from '../context/UnreadContext';
 import { AddSpotScreen } from '../screens/AddSpotScreen';
 import { GroupDetailScreen } from '../screens/GroupDetailScreen';
 import { GroupMediaScreen } from '../screens/GroupMediaScreen';
@@ -32,7 +33,17 @@ const theme = {
   },
 };
 
+function GroupsTabIcon({ color, size, unread }: { color: string; size: number; unread: boolean }) {
+  return (
+    <View>
+      <Ionicons name="chatbubble-outline" size={size} color={color} />
+      {unread ? <View style={styles.tabDot} /> : null}
+    </View>
+  );
+}
+
 function TabsNavigator() {
+  const { hasAnyUnread } = useUnread();
   return (
     <Tabs.Navigator
       screenOptions={{
@@ -46,6 +57,7 @@ function TabsNavigator() {
           paddingTop: 8,
         },
         tabBarItemStyle: {
+          overflow: 'visible',
           paddingVertical: 4,
         },
         tabBarActiveTintColor: colors.selected,
@@ -66,9 +78,10 @@ function TabsNavigator() {
         name="Groups"
         component={GroupsScreen}
         options={{
-          title: 'Groups',
+          title: 'Group chat',
+          tabBarAccessibilityLabel: hasAnyUnread ? 'Group chat, new messages' : 'Group chat',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubble-outline" size={size} color={color} />
+            <GroupsTabIcon color={color} size={size} unread={hasAnyUnread} />
           ),
         }}
       />
@@ -194,5 +207,14 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 17,
     fontWeight: '800',
+  },
+  tabDot: {
+    backgroundColor: colors.danger,
+    borderRadius: 4,
+    height: 8,
+    position: 'absolute',
+    right: -3,
+    top: -1,
+    width: 8,
   },
 });

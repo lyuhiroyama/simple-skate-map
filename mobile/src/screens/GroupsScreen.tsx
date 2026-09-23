@@ -17,6 +17,7 @@ import {
 import { api } from '../lib/api';
 import { alertError } from '../lib/errors';
 import { useAuth } from '../context/AuthContext';
+import { useUnread } from '../context/UnreadContext';
 import { Button, EmptyState, Field } from '../components/ui';
 import type { Group } from '../types';
 import type { RootStackParamList } from '../navigation/types';
@@ -27,6 +28,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export function GroupsScreen() {
   const navigation = useNavigation<Nav>();
   const { signOut } = useAuth();
+  const { unreadGroupIds, refreshUnread } = useUnread();
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,12 +46,13 @@ export function GroupsScreen() {
       const [{ groups: g }, me] = await Promise.all([api.getGroups(), api.getMe()]);
       setGroups(g);
       setUsername(me.profile.username);
+      await refreshUnread();
     } catch (e) {
       alertError('Could not load groups', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshUnread]);
 
   useFocusEffect(
     useCallback(() => {
@@ -175,7 +178,7 @@ export function GroupsScreen() {
           <Button title="Join group" variant="secondary" onPress={joinGroup} loading={busy} />
           <View style={styles.sectionTitleRow}>
             <Ionicons name="chatbubble-outline" size={20} color={colors.text} />
-            <Text style={styles.sectionTitle}>Groups</Text>
+            <Text style={styles.sectionTitle}>Group chat</Text>
           </View>
         </View>
       }
@@ -197,6 +200,10 @@ export function GroupsScreen() {
           onPress={() =>
             navigation.navigate('GroupDetail', { groupId: item.id, groupName: item.name })
           }
+          accessibilityRole="button"
+          accessibilityLabel={
+            unreadGroupIds.has(item.id) ? `${item.name}, new messages` : item.name
+          }
         >
           <View style={styles.cardBody}>
             <Text style={styles.cardTitle}>{item.name}</Text>
@@ -208,6 +215,7 @@ export function GroupsScreen() {
               Invite {item.inviteCode.toUpperCase()}
             </Text>
           </View>
+          {unreadGroupIds.has(item.id) ? <View style={styles.unreadDot} /> : null}
           <Pressable
             onPress={() => void copyInvite(item)}
             hitSlop={8}
@@ -338,6 +346,13 @@ const styles = StyleSheet.create({
   cardBody: {
     flex: 1,
     gap: 2,
+  },
+  unreadDot: {
+    backgroundColor: colors.danger,
+    borderRadius: 5,
+    height: 10,
+    marginHorizontal: spacing.sm,
+    width: 10,
   },
   cardTitle: {
     color: colors.text,

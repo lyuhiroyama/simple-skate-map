@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { CHAT_MEDIA_BUCKET, MEDIA_BUCKET, supabaseAdmin } from '../supabase.js';
 import { groupRole, isGroupMember, memberGroupIds } from '../lib/membership.js';
+import { markGroupRead, unreadGroupIds } from '../lib/unread.js';
 import { blockedUserIds, hiddenContentIds } from '../lib/moderation.js';
 import { publicUsername } from '../lib/profile.js';
 import { signPaths } from '../lib/signedUrls.js';
@@ -36,6 +37,21 @@ groupsRouter.get('/', async (req, res) => {
   }));
 
   res.json({ groups });
+});
+
+/** Group ids with a message the current user has not opened yet. */
+groupsRouter.get('/unread', async (req, res) => {
+  res.json({ groupIds: await unreadGroupIds(req.userId) });
+});
+
+/** Mark this group's chat as read. */
+groupsRouter.post('/:groupId/read', async (req, res) => {
+  if (!(await isGroupMember(req.userId, req.params.groupId))) {
+    res.status(403).json({ error: 'You are not a member of this group' });
+    return;
+  }
+  await markGroupRead(req.userId, req.params.groupId);
+  res.status(204).end();
 });
 
 const createGroupSchema = z.object({

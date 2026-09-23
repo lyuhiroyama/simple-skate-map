@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
+import { UnreadProvider } from './src/context/UnreadContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { isDemo } from './src/config';
 import { initPreview } from './src/lib/preview';
@@ -56,15 +57,17 @@ export default function App() {
       <SafeAreaProvider>
         <ErrorBoundary>
           <AuthProvider>
-            <StatusBar style="light" />
-            {isDemo ? (
-              <View style={styles.demoBanner}>
-                <Text style={styles.demoBannerText}>
-                  Sample places to look at — no live account.
-                </Text>
-              </View>
-            ) : null}
-            <RootNavigator />
+            <UnreadProvider>
+              <StatusBar style="light" />
+              {isDemo ? (
+                <View style={styles.demoBanner}>
+                  <Text style={styles.demoBannerText}>
+                    Sample places to look at — no live account.
+                  </Text>
+                </View>
+              ) : null}
+              <RootNavigator />
+            </UnreadProvider>
           </AuthProvider>
         </ErrorBoundary>
       </SafeAreaProvider>

@@ -112,6 +112,7 @@ let previewUsernameChangedAt: string | null = null;
 let blockedUsers: BlockedUser[] = [];
 let hiddenMessages: string[] = [];
 let hiddenSpots: string[] = [];
+let lastReadByGroup: Record<string, string> = {};
 
 function pin(spot: SpotDetail): SpotPin {
   return {
@@ -138,6 +139,7 @@ async function persist() {
       blockedUsers,
       hiddenMessages,
       hiddenSpots,
+      lastReadByGroup,
     }),
   );
 }
@@ -169,6 +171,7 @@ export async function initPreview() {
       blockedUsers?: BlockedUser[];
       hiddenMessages?: string[];
       hiddenSpots?: string[];
+      lastReadByGroup?: Record<string, string>;
     };
     if (parsed.groups) groups = parsed.groups;
     if (parsed.membersByGroup) membersByGroup = parsed.membersByGroup;
@@ -190,6 +193,7 @@ export async function initPreview() {
     if (parsed.blockedUsers) blockedUsers = parsed.blockedUsers;
     if (parsed.hiddenMessages) hiddenMessages = parsed.hiddenMessages;
     if (parsed.hiddenSpots) hiddenSpots = parsed.hiddenSpots;
+    if (parsed.lastReadByGroup) lastReadByGroup = parsed.lastReadByGroup;
   } catch {
     // keep seed data if storage is corrupt
   }
@@ -265,6 +269,29 @@ export const previewApi = {
         (m) => !blocked.has(m.userId) && !hidden.has(m.id),
       ),
     };
+  },
+
+  getUnread: async () => {
+    const blocked = new Set(blockedUsers.map((b) => b.userId));
+    const hidden = new Set(hiddenMessages);
+    const groupIds = groups
+      .filter((group) => {
+        const lastRead = lastReadByGroup[group.id] ?? '1970-01-01T00:00:00.000Z';
+        return (messagesByGroup[group.id] ?? []).some(
+          (m) =>
+            m.userId !== USER_ID &&
+            !blocked.has(m.userId) &&
+            !hidden.has(m.id) &&
+            m.createdAt > lastRead,
+        );
+      })
+      .map((group) => group.id);
+    return { groupIds };
+  },
+
+  markGroupRead: async (groupId: string) => {
+    lastReadByGroup[groupId] = new Date().toISOString();
+    await persist();
   },
 
   sendMessage: async (

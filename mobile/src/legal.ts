@@ -3,7 +3,7 @@ export const SUPPORT_EMAIL = 'beanface.studios@gmail.com';
 export const PRIVACY_SECTIONS: { title: string; body: string }[] = [
   {
     title: 'What this app is',
-    body: 'Simple Skate Map is for documenting street architecture and clips with people you invite. It is not a guidebook. Do not trespass.',
+    body: 'Simple Skate Map is for documenting street architecture with people you invite. It is not a guidebook. Do not trespass.',
   },
   {
     title: 'What we collect',

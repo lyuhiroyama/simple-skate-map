@@ -12,7 +12,6 @@ import {
   View,
 } from 'react-native';
 import { useEvent } from 'expo';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import {
@@ -225,16 +224,13 @@ export function MediaLightbox({
             </Animated.View>
           </PanGestureHandler>
           <Animated.View
-            style={[styles.chrome, { opacity: chromeOpacity, height: SCREEN_H * 0.28 }]}
+            style={[
+              styles.chrome,
+              { opacity: chromeOpacity, paddingTop: Math.max(insets.top, 12) },
+            ]}
             pointerEvents={dragging || !chromeOn ? 'none' : 'box-none'}
           >
-            <LinearGradient
-              colors={['rgba(0,0,0,0.92)', 'rgba(0,0,0,0.62)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0)']}
-              locations={[0, 0.38, 0.72, 1]}
-              pointerEvents="none"
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={[styles.chromeRow, { paddingTop: Math.max(insets.top, 12) }]}>
+            <View style={styles.chromeRow}>
               <Pressable onPress={onClose} hitSlop={12} style={styles.close} accessibilityLabel="Close">
                 <Ionicons name="close" size={28} color="#fff" style={styles.chromeIcon} />
               </Pressable>
@@ -374,6 +370,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   chrome: {
+    backgroundColor: 'rgba(0,0,0,0.92)',
     left: 0,
     position: 'absolute',
     right: 0,
